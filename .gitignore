@@ -1,0 +1,17 @@
+# Personal data: exports, backups and anything else dropped in here
+*.csv
+*.xlsx
+*.json
+*.ics
+my-data/
+
+# lib/ only ships the Excel library and its licence
+lib/*
+!lib/xlsx.full.min.js
+!lib/LICENSE-sheetjs.txt
+
+# Old filename, kept locally as a redirect to index.html
+bulk-tracker.html
+
+.DS_Store
+Thumbs.db

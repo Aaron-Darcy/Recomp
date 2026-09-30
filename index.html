@@ -1,0 +1,1890 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recomp</title>
+<meta name="description" content="Recomp: a private, offline calorie and training tracker for bulking, maintaining or cutting.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232f6fe4'/><path d='M6 22 L13 15 L18 19 L26 10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<script src="lib/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#f5f6f8;--surface:#fff;--ink:#1a1d22;--ink2:#4b5260;--muted:#6f7684;--line:#e3e6eb;
+  --accent:#2f6fe4;--accent-soft:#e8f0fd;--dot:#9aa2ae;--good:#1f8a4c;--warn:#a86400;--chip:#eef0f3;--band:#eaf6ee;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1115;--surface:#181b21;--ink:#e7e9ec;--ink2:#b3b9c3;--muted:#8f96a1;--line:#2a2f37;
+  --accent:#6c9cff;--accent-soft:#1d2a44;--dot:#626a77;--good:#4cc27e;--warn:#e0a040;--chip:#232830;--band:#16281d;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+code{background:var(--chip);padding:1px 5px;border-radius:4px;font-size:13px}
+.wrap{max-width:1080px;margin:0 auto;padding:20px 16px 60px}
+.brand{display:flex;align-items:center;gap:10px}
+.brand svg{flex:none}
+h1{font-size:22px;margin:0}
+h2{font-size:17px;margin:22px 0 6px}
+h2:first-child{margin-top:0}
+.sub{color:var(--muted);margin:4px 0 18px;font-size:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px}
+.banner{background:var(--accent-soft);border:1px solid var(--accent);border-radius:10px;padding:8px 12px;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.stat .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.stat .val{font-size:26px;font-weight:650;margin:2px 0;font-variant-numeric:tabular-nums}
+.stat .note{font-size:13px;color:var(--ink2)}
+.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}
+.tabs button{background:none;border:0;padding:8px 14px;border-radius:8px;color:var(--ink2);font:inherit;cursor:pointer}
+.tabs button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 0 0 1px var(--line)}
+.hidden{display:none!important}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.between{justify-content:space-between}
+.btn{display:inline-block;font:inherit;font-size:14px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 12px;border-radius:8px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn:hover{filter:brightness(.97)}
+.btn:disabled{opacity:.6;cursor:wait}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;font-size:13px;border:0;background:var(--surface);color:var(--ink2);padding:6px 11px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--accent);color:#fff}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-top:12px}
+@media (max-width:900px){.week{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}}
+.day{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.day.today{box-shadow:0 0 0 2px var(--accent)}
+.day h3{margin:0;font-size:14px}
+.day .date{color:var(--muted);font-size:12px;font-weight:400}
+.chip{font:inherit;font-size:12px;padding:3px 8px;border-radius:999px;border:1px solid var(--line);background:var(--chip);color:var(--ink2);cursor:pointer;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--ink);font-weight:600}
+.day .kcal{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums;margin-top:4px}
+.day .mac{font-size:12px;color:var(--muted)}
+.day .logged{font-size:12px;color:var(--good)}
+.run{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--ink2);white-space:nowrap}
+.run input{width:46px;padding:3px 5px}
+input,select{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 7px;max-width:100%}
+input[type=checkbox]{width:auto}
+.summary{margin-top:14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.summary div{background:var(--chip);border-radius:8px;padding:10px 12px;font-size:14px}
+.summary b{font-size:18px;font-variant-numeric:tabular-nums}
+form.log{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.checks{display:flex;gap:12px;flex-wrap:wrap;font-size:14px;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:500}
+.src{display:block;font-size:12px;color:var(--muted)}
+td.x{white-space:nowrap}
+td.x button{background:none;border:0;color:var(--muted);cursor:pointer;font-size:16px}
+.tablewrap{overflow-x:auto;margin-top:14px}
+.chartbox{position:relative;margin-top:6px;min-height:40px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);align-items:center;font-weight:400}
+.sw-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--dot);margin-right:5px}
+.sw-line{display:inline-block;width:16px;height:2px;background:var(--accent);margin-right:5px;vertical-align:middle}
+.sw-tick{display:inline-block;width:14px;height:2px;background:var(--ink);margin-right:5px;vertical-align:middle}
+.tip{position:absolute;pointer-events:none;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.12);white-space:nowrap;z-index:5}
+.empty{color:var(--muted);padding:26px 0;text-align:center;font-size:14px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.help{font-size:14px;color:var(--ink2)}
+.help h3{color:var(--ink);font-size:15px;margin:16px 0 4px}
+.steps{padding-left:20px;margin:6px 0 10px}
+.steps li{margin-bottom:6px}
+.pill{font-size:12px;padding:2px 8px;border-radius:999px;background:var(--chip);color:var(--ink2)}
+.status{font-size:13px;color:var(--ink2);margin-top:8px}
+.good{color:var(--good)}.warn{color:var(--warn)}
+svg text{fill:var(--muted);font-size:11px;font-family:inherit}
+.split{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(460px,100%),1fr));gap:12px;margin-top:12px}
+.wk{border:1px solid var(--line);border-radius:10px;padding:12px;overflow-x:auto}
+.wk h3{margin:0 0 6px;font-size:16px}
+.wk h3 .date{color:var(--muted);font-size:12px;font-weight:400}
+.wk td{font-size:13px}
+.wk td:first-child{font-weight:600}
+.verdict{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:10px 14px;margin-top:14px;font-size:14px}
+.verdict b{font-size:16px}
+.checklist{list-style:none;padding:0;margin:6px 0;font-size:14px}
+.checklist li{padding:5px 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.daypills{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.daypills span{background:var(--chip);border-radius:8px;padding:6px 10px;font-size:13px;font-variant-numeric:tabular-nums}
+textarea{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-height:60px}
+button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;font-size:12px;cursor:pointer;text-decoration:underline dotted}
+/* dashboard */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-top:12px}
+.tile{background:var(--chip);border-radius:10px;padding:10px 12px}
+.tile .lbl{font-size:12px;color:var(--muted)}
+.tile .val{font-size:22px;font-weight:650;font-variant-numeric:tabular-nums}
+.tile .cmp{font-size:12px;color:var(--ink2)}
+.sec{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:24px 0 8px;font-weight:600}
+.insights{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.insights li{display:flex;gap:8px;align-items:flex-start;font-size:14px;background:var(--chip);border-radius:8px;padding:8px 10px}
+.insights .ic{flex:none;width:18px;text-align:center}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));gap:12px}
+.panel{border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.ph{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;font-weight:600;font-size:14px}
+.ph .note{font-weight:400;font-size:12px;color:var(--muted)}
+.hbars{display:grid;gap:6px;margin-top:10px}
+.hb{display:grid;grid-template-columns:78px 1fr 44px;gap:8px;align-items:center;font-size:13px}
+.hb .track{position:relative;height:14px;background:var(--chip);border-radius:4px}
+.hb .band{position:absolute;top:0;bottom:0;background:var(--band);border-left:1px dashed var(--good);border-right:1px dashed var(--good)}
+.hb .bar{position:absolute;left:0;top:3px;bottom:3px;background:var(--accent);border-radius:0 4px 4px 0}
+.hb .n{text-align:right;font-variant-numeric:tabular-nums}
+.prs{list-style:none;margin:8px 0 0;padding:0;font-size:13px}
+.prs li{padding:6px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:8px}
+/* onboarding */
+.modal{position:fixed;inset:0;background:rgba(10,12,16,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:24px 12px;z-index:50}
+.modal .card{max-width:760px;width:100%}
+.obweek{font-size:13px}
+.obweek th,.obweek td{text-align:center;padding:5px 4px}
+.obweek td:first-child,.obweek th:first-child{text-align:left}
+.obweek input[type=number]{width:52px;padding:3px 4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M6 22 L13 15 L18 19 L26 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <h1>Recomp</h1>
+  </div>
+  <p class="sub" id="subline">Calories planned around your training, a weight trend that ignores daily noise, and a weekly check-in that adjusts itself. Everything stays in this browser.</p>
+
+  <div class="banner hidden" id="demoBanner"></div>
+  <div class="banner hidden" id="ciBanner"></div>
+  <div class="banner hidden" id="banner"></div>
+  <div class="stats" id="stats"></div>
+
+  <div class="tabs" id="tabs">
+    <button data-t="plan" class="on">Week plan</button>
+    <button data-t="checkin">Check-in</button>
+    <button data-t="log">Daily log</button>
+    <button data-t="dash">Dashboard</button>
+    <button data-t="split">Lifts</button>
+    <button data-t="sync">Sync &amp; backup</button>
+    <button data-t="settings">Settings &amp; help</button>
+  </div>
+
+  <!-- PLAN -->
+  <section id="t-plan" class="card">
+    <div class="row between">
+      <div class="row">
+        <button class="btn" id="wkPrev" aria-label="Previous week">←</button>
+        <b id="wkLabel"></b>
+        <button class="btn" id="wkNext" aria-label="Next week">→</button>
+      </div>
+      <div class="row">
+        <button class="btn" id="wkReset" title="Reset this week to your default week">Reset to default</button>
+        <button class="btn" id="wkDefault" title="Use this week's layout for all future weeks">Save as default week</button>
+      </div>
+    </div>
+    <p class="help" style="margin:8px 0 0">Tap what you're doing each day. Skipping a session this week? Turn it off and that day's target drops.</p>
+    <div class="week" id="week"></div>
+    <div class="summary" id="weekSummary"></div>
+  </section>
+
+  <!-- CHECK-IN -->
+  <section id="t-checkin" class="card hidden">
+    <div id="ciBody"></div>
+    <h2>Past check-ins</h2>
+    <div class="tablewrap"><table id="ciHistory"></table></div>
+  </section>
+
+  <!-- LOG -->
+  <section id="t-log" class="card hidden">
+    <form class="log" id="logForm">
+      <label class="f">Date<input type="date" id="lDate" required></label>
+      <label class="f"><span id="lWeightLbl">Morning weight</span><input type="number" step="0.05" min="20" max="700" id="lWeight"></label>
+      <label class="f">Calories eaten<input type="number" step="10" min="0" id="lKcal" placeholder="optional"></label>
+      <div class="checks">
+        <label><input type="checkbox" id="lGym"> Gym</label>
+        <label class="sportOnly"><input type="checkbox" id="lTrain"> <span class="sportTrainLbl">Training</span></label>
+        <label class="sportOnly"><input type="checkbox" id="lMatch"> <span class="sportMatchLbl">Match</span></label>
+        <label class="run">Run <input type="number" step="0.1" min="0" id="lRun" placeholder="0"> <span class="du">km</span></label>
+      </div>
+      <button class="btn primary" type="submit">Save day</button>
+    </form>
+    <p class="help" style="margin:10px 0 0">Calories are pre-filled with that day's target. <b>If you roughly hit it, leave it.</b> If you went well over or under, put in your best guess. Recomp compares this with your weight trend to learn your real maintenance calories. Activity ticks fill in automatically from Strava and Strong.</p>
+    <div class="tablewrap"><table id="logTable"></table></div>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="t-dash" class="card hidden">
+    <div class="row between">
+      <h2 style="margin:0">Dashboard</h2>
+      <div class="seg" id="dashRange" role="group" aria-label="Time range">
+        <button data-w="4">4 wks</button><button data-w="12">12 wks</button><button data-w="26">6 mo</button><button data-w="0">All</button>
+      </div>
+    </div>
+    <div class="tiles" id="dTiles"></div>
+
+    <div class="sec">Insights</div>
+    <ul class="insights" id="dInsights"></ul>
+
+    <div class="sec">Body</div>
+    <div class="charts">
+      <div class="panel"><div class="ph">Weight <span class="legend"><span><span class="sw-dot"></span>Weigh-in</span><span><span class="sw-line"></span>Trend</span></span></div><div class="chartbox" id="cWeight"></div></div>
+      <div class="panel"><div class="ph">Calories per week <span class="legend"><span><span class="sw-line" style="height:8px;width:8px;border-radius:2px"></span>Avg eaten</span><span><span class="sw-tick"></span>Avg target</span></span></div><div class="chartbox" id="cKcal"></div></div>
+    </div>
+    <div class="summary" id="progSummary"></div>
+
+    <div class="sec">Lifts</div>
+    <div class="charts">
+      <div class="panel"><div class="ph">Strength vs your best <span class="note">avg % of all-time best, current split</span></div><div class="chartbox" id="cStrength"></div></div>
+      <div class="panel"><div class="ph"><span>Exercise</span> <select id="exPick" aria-label="Exercise"></select></div><div class="chartbox" id="cExercise"></div></div>
+      <div class="panel"><div class="ph">Sets per muscle group <span class="note">per week, last 4 weeks · shaded = 10–20</span></div><div class="hbars" id="cMuscles"></div></div>
+      <div class="panel"><div class="ph">Recent PRs <span class="note">estimated 1-rep max</span></div><ul class="prs" id="cPRs"></ul></div>
+    </div>
+
+    <div class="sec">Running</div>
+    <div class="charts">
+      <div class="panel"><div class="ph"><span>Distance per week (<span class="du">km</span>)</span></div><div class="chartbox" id="cRunKm"></div></div>
+      <div class="panel"><div class="ph">Pace <span class="legend"><span><span class="sw-dot"></span>Run</span><span><span class="sw-line"></span>5-run average</span><span class="note">lower is faster</span></span></div><div class="chartbox" id="cPace"></div></div>
+    </div>
+    <div class="summary" id="runSummary"></div>
+
+    <div id="sportSec">
+      <div class="sec" id="sportHdr">Sport</div>
+      <div class="charts">
+        <div class="panel"><div class="ph">Sessions per week</div><div class="chartbox" id="cSport"></div></div>
+        <div class="panel"><div class="ph">Summary</div><div class="summary" id="sportSummary" style="margin-top:8px"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIFTS / SPLIT -->
+  <section id="t-split" class="card hidden">
+    <div class="row between">
+      <p class="help" style="margin:0;flex:1;min-width:260px">Pulled from your Strong workouts. <b>Next time</b> uses double progression, set by set: beat each set by a rep. Once a set reaches the top of your rep range (<span id="repRange"></span>), that set goes up one weight step and starts again at the bottom. Click a step size to change it.</p>
+      <button class="btn" id="splitTemplate">Use these days as my default week</button>
+    </div>
+    <div class="split" id="splitBox"></div>
+  </section>
+
+  <!-- SYNC -->
+  <section id="t-sync" class="card hidden">
+    <h2>Excel backup</h2>
+    <p class="help">Pick a file once and every change saves to it automatically (Chrome or Edge). Open it in Excel to browse your log, weekly summary, check-ins and next-session targets. If you edit weights or calories in Excel, <b>Restore from Excel</b> brings those edits back in.</p>
+    <div class="row">
+      <button class="btn primary" id="xlLink">Link Excel backup file</button>
+      <button class="btn hidden" id="xlReconnect">Reconnect backup</button>
+      <button class="btn" id="xlDownload">Download .xlsx now</button>
+      <label class="btn">Restore from Excel<input type="file" id="xlImport" accept=".xlsx" hidden></label>
+    </div>
+    <div class="status" id="xlStatus"></div>
+
+    <h2>Strava (runs &amp; sport from your watch)</h2>
+    <p class="help">Anything that reaches Strava can be pulled in: Apple Watch, Garmin, Coros, Wear OS and so on. Apple Watch: in the Strava iPhone app go to You → ⚙ Settings → Applications, Services, and Devices → <b>Health</b> and allow workout uploads.</p>
+    <div id="stravaBox"></div>
+    <div class="status" id="svMsg"></div>
+
+    <h2>Strong (gym sessions)</h2>
+    <p class="help">Strong can export your workouts: <b>Strong → Profile → ⚙ Settings → Export Strong Data</b>. Get the CSV onto this computer and import it. Your full history feeds the <b>Lifts</b> tab and dashboard. Only sessions from your start date onwards get ticked in the daily log. Re-importing only updates, never duplicates.</p>
+    <label class="btn">Import Strong CSV<input type="file" id="strongFile" accept=".csv,text/csv" hidden></label>
+    <div class="status" id="strongMsg"></div>
+
+    <h2>Plain backup</h2>
+    <div class="row">
+      <button class="btn" id="exportBtn">Export .json</button>
+      <label class="btn">Import .json<input type="file" id="importFile" accept=".json" hidden></label>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="t-settings" class="card hidden">
+    <div class="grid2" id="settingsForm"></div>
+    <div class="row" style="margin-top:16px">
+      <button class="btn" id="rerunSetup">Run setup again</button>
+      <button class="btn" id="resetAll">Wipe all data</button>
+    </div>
+    <div class="help">
+      <h3>How the numbers are worked out</h3>
+      <p><b>1. Base burn:</b> your BMR (Mifflin–St Jeor formula) × your daily-life factor. That covers everything except training.<br>
+      <b>2. Plus training:</b> each gym session, sport session, match and run distance adds its own calories (change them above, or use your watch's averages from Strava).<br>
+      <b>3. Plus learnt adjustment:</b> after about 2 weeks of weigh-ins and calorie entries, Recomp compares what you ate with what your weight actually did, and corrects the formula. It's locked in at each weekly check-in so targets don't drift mid-week.<br>
+      <b>4. Plus your goal:</b> a daily deficit (cut), nothing (maintain) or a surplus (bulk).</p>
+      <h3>Getting clean data</h3>
+      <p>Weigh yourself every morning (or as often as you can) after the toilet, before food or drink, in the same clothes. Daily weight bounces ±0.5–1 kg from water, salt and carbs, so <b>only watch the trend line</b>. The first week of a new calorie level often shows a jump or drop from water and stored carbs. That isn't fat.</p>
+      <h3>Rough rates</h3>
+      <p>~7700 kcal ≈ 1 kg of body weight change. A 250 kcal/day surplus is roughly +0.2 kg/week; a 500 kcal/day deficit roughly −0.45 kg/week. The check-in tells you whether you're on pace and what to change.</p>
+    </div>
+  </section>
+</div>
+
+<div class="modal hidden" id="onboard"></div>
+
+<script>
+const KEY = 'recomp.v1';
+const SKEY = 'recomp.strava';                 // kept separate so tokens never end up in backups
+const OLD_KEY = 'leanBulkTracker.v1', OLD_SKEY = 'leanBulkTracker.strava';
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const KCAL_PER_KG = 7700, LB = 2.20462, MI = 1.60934;
+
+const defaults = () => ({
+  settings: {
+    units: 'metric', sex: 'm', age: 30, heightCm: 175, startWeight: 75,
+    goal: 'maintain', adjust: 0, factor: 1.3,
+    gym: 250, sport: '', train: 500, match: 650, matchDay: 5, runPerKm: 0,
+    proteinPerKg: 2.0, fatPerKg: 0.9,
+    repLow: 8, repHigh: 12, checkInDay: 0,
+    startDate: '', maintWeeks: 0, onboarded: false
+  },
+  template: [{gym:1},{},{gym:1},{},{gym:1},{},{}],   // Mon..Sun
+  plans: {},    // weekStart ISO -> [7 activity objects]
+  logs: {},     // ISO date -> {weight (kg), kcal, gym, train, match, run (km), strong?, strava?}
+  workouts: [], // Strong sessions: {id, d, n: name, m: minutes, s: [[exercise, weight, reps, setOrder]]}
+  incr: {},     // exercise -> weight step override
+  checkins: [], // weekly check-ins; the latest one locks the calorie adjustment for the week
+  acts: {}      // Strava activities by id: {d, type, name, km, min, kcal}
+});
+
+let S = load();
+let weekOffset = 0, dashWeeks = 12, dashEx = null;
+
+function normalize(r) {
+  const d = defaults();
+  r = r || {};
+  return { settings: {...d.settings, ...(r.settings || {})}, template: r.template || d.template, plans: r.plans || {}, logs: r.logs || {},
+           workouts: r.workouts || [], incr: r.incr || {}, checkins: r.checkins || [], acts: r.acts || {}, demo: !!r.demo };
+}
+function load() {
+  try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && r.settings) return normalize(r); } catch (e) {}
+  // One-time move from the earlier single-user "Lean Bulk Tracker"
+  try {
+    const old = JSON.parse(localStorage.getItem(OLD_KEY));
+    if (old && old.settings) {
+      const s = old.settings;
+      old.settings = { ...s, goal: 'bulk', adjust: s.surplus > 0 ? s.surplus : 150, units: 'metric', sport: 'Football', onboarded: true };
+      delete old.settings.surplus;
+      const sv = localStorage.getItem(OLD_SKEY);
+      if (sv && !localStorage.getItem(SKEY)) localStorage.setItem(SKEY, sv);
+      const r = normalize(old);
+      localStorage.setItem(KEY, JSON.stringify(r));
+      return r;
+    }
+  } catch (e) {}
+  return defaults();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Could not save. Browser storage is blocked.'); }
+  scheduleBackup();
+}
+
+/* ---------- helpers ---------- */
+function $(s) { return document.querySelector(s); }
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse = s => { const [y,m,d] = s.split('-').map(Number); return new Date(y, m-1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const monday = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return addDays(x, -((x.getDay()+6)%7)); };
+const dayIdx = d => (d.getDay()+6) % 7;
+const dayNum = s => Math.round(parse(s).getTime() / 864e5);
+const fromNum = x => iso(new Date(Math.round(x) * 864e5 + 12 * 36e5));
+const todayIso = () => iso(new Date());
+const fmtShort = s => parse(s).toLocaleDateString(undefined, {day:'numeric', month:'short'});
+const avg = a => a.reduce((x,y) => x+y, 0) / a.length;
+const sum = a => a.reduce((x,y) => x+y, 0);
+const r10 = n => Math.round(n/10) * 10;
+const sgn = v => (+v >= 0 ? '+' : '') + v;
+const logFor = d => S.logs[d] || (S.logs[d] = { weight: 0, kcal: 0 });
+const span7 = (from, off) => [...Array(7)].map((_, i) => iso(addDays(parse(from), i + off)));
+const startDate = () => S.settings.startDate || todayIso();
+
+/* ---------- units (data is always stored in kg / cm / km) ---------- */
+const imp = () => S.settings.units === 'imperial';
+const wu = () => imp() ? 'lb' : 'kg';
+const du = () => imp() ? 'mi' : 'km';
+const wOut = kg => imp() ? kg * LB : kg;
+const wIn = v => imp() ? v / LB : v;
+const dOut = km => imp() ? km / MI : km;
+const dIn = v => imp() ? v * MI : v;
+const fw = (kg, dp = 1) => wOut(+kg).toFixed(dp);
+const fd = (km, dp = 1) => +dOut(+km).toFixed(dp);
+const fmtPace = minPerUnit => { const m = Math.floor(minPerUnit), s = Math.round((minPerUnit - m) * 60); return s === 60 ? `${m + 1}:00` : `${m}:${pad(s)}`; };
+const heightTxt = cm => imp() ? `${Math.floor(cm / 30.48)}′${Math.round(cm / 2.54 % 12)}″` : `${Math.round(cm)} cm`;
+
+/* ---------- sport ---------- */
+const SPORT_TYPES = { football: 'Soccer', soccer: 'Soccer', basketball: 'Basketball', volleyball: 'Volleyball', tennis: 'Tennis',
+  padel: 'Padel', badminton: 'Badminton', squash: 'Squash', cricket: 'Cricket', pickleball: 'Pickleball' };
+const SPORT_EMOJI = { football: '⚽', soccer: '⚽', rugby: '🏉', basketball: '🏀', hockey: '🏑', netball: '🏐', volleyball: '🏐',
+  tennis: '🎾', padel: '🎾', badminton: '🏸', cricket: '🏏', 'gaelic football': '🏐', hurling: '🏑', lacrosse: '🥍' };
+const sportName = () => (S.settings.sport || '').trim();
+const hasSport = () => !!sportName();
+const sportEmoji = () => SPORT_EMOJI[sportName().toLowerCase()] || '🏅';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+/* ---------- model ---------- */
+function bmr(w) { const s = S.settings; return 10*w + 6.25*s.heightCm - 5*s.age + (s.sex === 'f' ? -161 : 5); }
+function actKcal(a, w) {
+  const s = S.settings;
+  const perKm = s.runPerKm > 0 ? s.runPerKm : 0.9 * w;
+  return (a.gym ? s.gym : 0) + (hasSport() && a.train ? s.train : 0) + (hasSport() && a.match ? s.match : 0) + (+a.run || 0) * perKm;
+}
+function formulaTDEE(a, w) { return bmr(w) * S.settings.factor + actKcal(a, w); }
+
+function weighIns() {
+  return Object.keys(S.logs).filter(k => +S.logs[k].weight > 0).sort()
+    .map(k => ({ date: k, x: dayNum(k), w: +S.logs[k].weight }));
+}
+function trendSeries() {
+  let e = null;
+  return weighIns().map(o => { e = e == null ? o.w : e + 0.15 * (o.w - e); return {...o, t: e}; });
+}
+function currentWeight() { const t = trendSeries(); return t.length ? t[t.length-1].t : +S.settings.startWeight; }
+function slope(p) {
+  const mx = avg(p.map(o => o.x)), my = avg(p.map(o => o.w));
+  let a = 0, b = 0;
+  for (const o of p) { a += (o.x-mx)*(o.w-my); b += (o.x-mx)**2; }
+  return b ? a/b : 0;
+}
+function recentRate(days = 21) {
+  const today = dayNum(todayIso());
+  const p = weighIns().filter(o => o.x > today - days && o.x <= today);
+  if (p.length < 5 || p[p.length-1].x - p[0].x < 10) return null;
+  return slope(p) * 7;
+}
+// Learns the gap between formula maintenance and real maintenance from the last 4 weeks.
+function calibration() {
+  const today = dayNum(todayIso()), from = today - 28;
+  const keys = Object.keys(S.logs).filter(k => dayNum(k) > from && dayNum(k) <= today);
+  const w = keys.filter(k => +S.logs[k].weight > 0).map(k => ({ x: dayNum(k), w: +S.logs[k].weight }));
+  const eat = keys.filter(k => +S.logs[k].kcal > 0);
+  const xs = keys.filter(k => +S.logs[k].weight > 0 || +S.logs[k].kcal > 0).map(dayNum);
+  const span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
+  const need = { weighIns: Math.max(0, 8 - w.length), intake: Math.max(0, 10 - eat.length), days: Math.max(0, 14 - span) };
+  if (w.length < 8 || eat.length < 10 || span < 14) return { ready: false, corr: 0, need };
+  const wNow = currentWeight();
+  const intake = avg(eat.map(k => +S.logs[k].kcal));
+  const predicted = avg(eat.map(k => formulaTDEE(S.logs[k], wNow)));
+  const rateDay = slope(w);
+  const actual = intake - rateDay * KCAL_PER_KG;
+  let corr = (actual - predicted) * Math.min(1, span / 21);
+  corr = Math.max(-500, Math.min(500, corr));
+  return { ready: true, corr: Math.round(corr), intake, rate: rateDay * 7 };
+}
+// Targets use the adjustment + weight locked at the last check-in, so they stay put all week.
+function activeCal() {
+  const c = S.checkins[S.checkins.length - 1];
+  return c ? { corr: c.corr, w: c.w, locked: c.date } : liveCal();
+}
+function liveCal() { return { corr: calibration().corr, w: currentWeight() }; }
+// Optional maintenance weeks from the start date, then the goal's deficit/surplus kicks in.
+const goalStart = () => iso(addDays(parse(startDate()), 7 * (+S.settings.maintWeeks || 0)));
+const adjustOn = d => d < goalStart() ? 0 : +S.settings.adjust;
+const aimRate = d => adjustOn(d) * 7 / KCAL_PER_KG;          // kg/week, signed
+function targetFor(a, cal = activeCal(), d = todayIso()) {
+  return r10(formulaTDEE(a, cal.w) + cal.corr + adjustOn(d));
+}
+function macros(kcal) {
+  const w = currentWeight(), s = S.settings;
+  const p = Math.round(s.proteinPerKg * w), f = Math.round(s.fatPerKg * w);
+  return { p, f, c: Math.max(0, Math.round((kcal - p*4 - f*9) / 4)) };
+}
+const GOAL_WORD = { bulk: 'Bulking', cut: 'Cutting', maintain: 'Maintaining' };
+function phaseText() {
+  const today = todayIso(), gs = goalStart(), a = +S.settings.adjust;
+  if (today < startDate()) return `Starts ${DAYS[dayIdx(parse(startDate()))]} ${fmtShort(startDate())}`;
+  if (today < gs) return `Maintenance week · ${S.settings.goal === 'maintain' ? 'then maintain' : (S.settings.goal === 'cut' ? 'cut' : 'bulk') + ' starts ' + fmtShort(gs)}`;
+  return `${GOAL_WORD[S.settings.goal] || 'Goal'}${a ? ` · ${sgn(a)} kcal/day` : ''}`;
+}
+const rateTxt = kgPerWk => `${sgn(fw(kgPerWk, 2))} ${wu()}/wk`;
+
+/* ---------- plans ---------- */
+function weekKey(off = weekOffset) { return iso(addDays(monday(new Date()), 7*off)); }
+function weekPlan(key, create) {
+  if (S.plans[key]) return S.plans[key];
+  const p = S.template.map(a => ({...a}));
+  if (create) S.plans[key] = p;
+  return p;
+}
+function plannedActs(dateIso) { return weekPlan(iso(monday(parse(dateIso))))[dayIdx(parse(dateIso))]; }
+
+/* ---------- render: stats ---------- */
+function renderStats() {
+  const live = calibration(), cal = activeCal(), w = currentWeight(), rate = recentRate();
+  const rest = formulaTDEE({}, cal.w) + cal.corr;
+  const exp = aimRate(todayIso());
+  let rTxt = '—', rateNote = exp ? `Aim: ${rateTxt(exp)}` : 'Aim: hold steady';
+  if (rate != null) {
+    rTxt = rateTxt(rate);
+    const diff = rate - exp;
+    rateNote += Math.abs(diff) < 0.1 ? ' · <span class="good">✓ on track</span>'
+      : diff > 0 ? ' · <span class="warn">▲ above aim</span>' : ' · <span class="warn">▼ below aim</span>';
+  } else rateNote += ' · needs ~10 days of weigh-ins';
+  let calTxt;
+  if (cal.locked) calTxt = `Locked at check-in ${fmtShort(cal.locked)} (${sgn(cal.corr)} kcal learnt). Updates next ${DAYS[S.settings.checkInDay]}`;
+  else if (live.ready) calTxt = `Learnt from your data: <b>${sgn(live.corr)} kcal</b> vs formula`;
+  else {
+    const n = live.need, bits = [];
+    if (n.weighIns) bits.push(`${n.weighIns} weigh-ins`);
+    if (n.intake) bits.push(`${n.intake} calorie entries`);
+    if (n.days) bits.push(`${n.days} more days`);
+    calTxt = `Formula estimate. Adapts after ${bits.join(', ')}`;
+  }
+  const nextKey = weekKey(1), np = weekPlan(nextKey);
+  const npT = np.map((a, i) => targetFor(a, cal, iso(addDays(parse(nextKey), i))));
+  $('#stats').innerHTML = `
+    <div class="card stat"><div class="lbl">Trend weight</div><div class="val">${fw(w)} ${wu()}</div><div class="note">${phaseText()}</div></div>
+    <div class="card stat"><div class="lbl">Rate (last 3 wks)</div><div class="val">${rTxt}</div><div class="note">${rateNote}</div></div>
+    <div class="card stat"><div class="lbl">Maintenance, rest day</div><div class="val">${r10(rest)} kcal</div><div class="note">${calTxt}</div></div>
+    <div class="card stat"><div class="lbl">Next week avg target</div><div class="val">${r10(avg(npT))} kcal</div><div class="note">${fmtShort(nextKey)}: ${npT.join(' · ')}</div></div>`;
+}
+
+/* ---------- render: plan ---------- */
+function renderPlan() {
+  const key = weekKey(), start = parse(key), cal = activeCal();
+  const plan = weekPlan(key);
+  const labels = {0:'This week', 1:'Next week', '-1':'Last week'};
+  $('#wkLabel').textContent = `${labels[weekOffset] ?? 'Week of'} · ${fmtShort(key)} – ${fmtShort(iso(addDays(start, 6)))}`;
+  const today = todayIso(), sp = sportName();
+  $('#week').innerHTML = plan.map((a, i) => {
+    const d = iso(addDays(start, i)), k = targetFor(a, cal, d), m = macros(k), log = S.logs[d];
+    const chip = (f, t, title) => `<button class="chip ${a[f] ? 'on' : ''}" data-i="${i}" data-f="${f}" title="${esc(title || t)}">${t}</button>`;
+    return `<div class="day ${d === today ? 'today' : ''}">
+      <h3>${DAYS[i]} <span class="date">${fmtShort(d)}</span></h3>
+      ${chip('gym', '🏋️ ' + (a.w ? esc(a.w) : 'Gym'))}
+      ${sp ? chip('train', `${sportEmoji()} Training`, `${sp} training`) + chip('match', '🏟️ Match', `${sp} match`) : ''}
+      <label class="run">🏃 Run <input type="number" min="0" step="0.5" value="${a.run ? fd(a.run) : ''}" data-i="${i}" data-run placeholder="0"> ${du()}</label>
+      <div class="kcal">${k}</div>
+      <div class="mac">P ${m.p}g · C ${m.c}g · F ${m.f}g</div>
+      ${d >= startDate() && d < goalStart() ? '<div class="mac"><span class="pill">Maintenance</span></div>' : ''}
+      ${log && log.kcal ? `<div class="logged">Logged ${log.kcal} kcal</div>` : ''}
+    </div>`;
+  }).join('');
+  const ks = plan.map((a, i) => targetFor(a, cal, iso(addDays(start, i)))), total = sum(ks);
+  const m = macros(r10(total/7));
+  const perUnit = +(S.settings.proteinPerKg / (imp() ? LB : 1)).toFixed(2);
+  $('#weekSummary').innerHTML = `
+    <div>Week total<br><b>${total.toLocaleString()} kcal</b></div>
+    <div>Prefer eating the same every day?<br><b>${r10(total/7)} kcal/day</b> <span class="pill">P ${m.p} · C ${m.c} · F ${m.f}</span></div>
+    <div>Protein every day<br><b>${m.p} g</b> <span class="pill">${perUnit} g/${wu()}</span></div>`;
+}
+
+/* ---------- render: log ---------- */
+function fillLogForm(d) {
+  const l = S.logs[d], a = l || plannedActs(d);
+  $('#lDate').value = d;
+  $('#lWeight').value = l && l.weight ? +fw(l.weight, 2) : '';
+  $('#lGym').checked = !!a.gym; $('#lTrain').checked = !!a.train; $('#lMatch').checked = !!a.match;
+  $('#lRun').value = a.run ? fd(a.run, 2) : '';
+  $('#lKcal').value = l && l.kcal ? l.kcal : targetFor(a, undefined, d);
+}
+function formActs() { return { gym: $('#lGym').checked ? 1 : 0, train: $('#lTrain').checked ? 1 : 0, match: $('#lMatch').checked ? 1 : 0, run: +dIn(+$('#lRun').value || 0).toFixed(2) }; }
+function actsText(l) {
+  const sp = sportName();
+  return [l.gym && 'Gym', sp && l.train && `${sp} training`, sp && l.match && `${sp} match`, l.run > 0 && `Run ${fd(l.run)} ${du()}`].filter(Boolean).join(', ') || 'Rest';
+}
+function renderLog() {
+  const trend = Object.fromEntries(trendSeries().map(o => [o.date, o.t]));
+  const keys = Object.keys(S.logs).sort().reverse();
+  $('#lWeightLbl').textContent = `Morning weight (${wu()})`;
+  if (!keys.length) { $('#logTable').innerHTML = '<tr><td class="empty">Nothing logged yet. Start with today\'s weigh-in.</td></tr>'; return; }
+  const src = l => {
+    const out = [];
+    if (l.strong) out.push(`Strong: ${esc(l.strong.name)} · ${l.strong.sets} sets`);
+    for (const a of Object.values(l.strava || {})) out.push(`Strava: ${esc(a.name)}${a.km ? ` · ${fd(a.km)} ${du()}` : ''} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal (watch)` : ''}`);
+    return out.map(s => `<span class="src">${s}</span>`).join('');
+  };
+  $('#logTable').innerHTML = `<tr><th>Date</th><th>Weight</th><th>Trend</th><th>Eaten</th><th>Activity</th><th></th></tr>` +
+    keys.map(k => { const l = S.logs[k]; return `<tr>
+      <td>${DAYS[dayIdx(parse(k))]} ${fmtShort(k)}</td>
+      <td>${l.weight ? fw(l.weight, 2) : '—'}</td>
+      <td>${trend[k] ? fw(trend[k], 2) : '—'}</td>
+      <td>${l.kcal || '—'}</td>
+      <td>${actsText(l)}${src(l)}</td>
+      <td class="x"><button data-edit="${k}" title="Edit" aria-label="Edit ${k}">✎</button><button data-del="${k}" title="Delete" aria-label="Delete ${k}">×</button></td></tr>`; }).join('');
+}
+
+/* =====================================================================
+   Charts: small inline-SVG line and bar charts with hover tooltips
+   ===================================================================== */
+function niceStep(range, target = 4) {
+  const raw = range / target, p = Math.pow(10, Math.floor(Math.log10(raw))), n = raw / p;
+  return (n < 1.5 ? 1 : n < 3 ? 2 : n < 7 ? 5 : 10) * p;
+}
+function chartFrame(el, H) {
+  const W = Math.max(260, Math.floor(el.clientWidth || 600));
+  return { W, H, m: { l: 44, r: 10, t: 10, b: 24 } };
+}
+function yAxis(lo, hi, opts = {}) {
+  if (hi - lo < 1e-9) { hi += opts.minSpan || 1; lo -= opts.minSpan ? 0 : 0; }
+  const step = Math.max(opts.minStep || 0, niceStep(hi - lo));
+  let y0 = Math.floor(lo / step) * step, y1 = Math.ceil(hi / step) * step;
+  if (y1 === y0) y1 += step;
+  return { y0, y1, step };
+}
+function attachHover(el, box, onMove, onLeave) {
+  const hit = el.querySelector('.hit');
+  hit.addEventListener('mousemove', e => onMove(e.clientX - el.getBoundingClientRect().left));
+  hit.addEventListener('mouseleave', onLeave);
+  hit.addEventListener('touchstart', e => onMove(e.touches[0].clientX - el.getBoundingClientRect().left), { passive: true });
+}
+function placeTip(tip, x, y, W) {
+  tip.classList.remove('hidden');
+  const w = tip.offsetWidth;
+  tip.style.left = Math.max(0, x + 12 + w > W ? x - w - 12 : x + 12) + 'px';   // flip to the left near the right edge
+  tip.style.top = Math.max(0, y - 60) + 'px';
+}
+// series: [{type:'dots'|'line', pts:[{x,y}], color?}] ; x = day number
+function lineChart(el, o) {
+  const all = o.series.flatMap(s => s.pts);
+  if (all.length < 2) { el.innerHTML = `<p class="empty">${o.empty || 'Not enough data yet.'}</p>`; return; }
+  const { W, H, m } = chartFrame(el, o.height || 220);
+  let x0 = Math.min(...all.map(p => p.x)), x1 = Math.max(...all.map(p => p.x)); if (x1 === x0) { x0 -= 1; x1 += 1; }
+  const ys = all.map(p => p.y).concat(o.ref != null ? [o.ref] : []);
+  const pad = (Math.max(...ys) - Math.min(...ys)) * 0.08 || 0.5;
+  const { y0, y1, step } = yAxis(Math.min(...ys) - pad, Math.max(...ys) + pad);
+  const X = x => m.l + (x - x0) / (x1 - x0) * (W - m.l - m.r);
+  const Y = y => m.t + (1 - (y - y0) / (y1 - y0)) * (H - m.t - m.b);
+  const yf = o.yFmt || (v => +v.toFixed(2));
+  let g = '';
+  for (let y = y0; y <= y1 + 1e-9; y += step)
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${Y(y) + 4}" text-anchor="end">${yf(y)}</text>`;
+  if (o.ref != null) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(o.ref)}" y2="${Y(o.ref)}" stroke="var(--good)" stroke-dasharray="4 4"/><text x="${W - m.r}" y="${Y(o.ref) - 4}" text-anchor="end">${o.refLabel || ''}</text>`;
+  const nt = Math.max(2, Math.min(6, Math.floor((W - m.l) / 90)));
+  for (let i = 0; i < nt; i++) {
+    const x = x0 + (x1 - x0) * i / (nt - 1);
+    const d = parse(fromNum(x));
+    const lab = (x1 - x0) > 300 ? d.toLocaleDateString(undefined, { month: 'short', year: '2-digit' }) : d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+    g += `<text x="${X(x)}" y="${H - 6}" text-anchor="${i === 0 ? 'start' : i === nt - 1 ? 'end' : 'middle'}">${lab}</text>`;
+  }
+  let marks = '';
+  for (const s of o.series) {
+    const col = s.color || (s.type === 'line' ? 'var(--accent)' : 'var(--dot)');
+    if (s.type === 'dots') marks += s.pts.map(p => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+    else if (s.pts.length) marks += `<path d="${s.pts.map((p, i) => (i ? 'L' : 'M') + X(p.x).toFixed(1) + ' ' + Y(p.y).toFixed(1)).join('')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Chart')}">${g}${marks}
+    <line class="xh" y1="${m.t}" y2="${H - m.b}" stroke="var(--muted)" stroke-dasharray="3 3" visibility="hidden"/>
+    <circle class="xd" r="5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" visibility="hidden"/>
+    <rect class="hit" x="${m.l}" y="0" width="${W - m.l - m.r}" height="${H}" fill="transparent"/></svg><div class="tip hidden"></div>`;
+  const xsU = [...new Set(all.map(p => p.x))].sort((a, b) => a - b);
+  const xh = el.querySelector('.xh'), xd = el.querySelector('.xd'), tip = el.querySelector('.tip');
+  const main = o.series[o.series.length - 1];
+  attachHover(el, null, rx => {
+    let best = xsU[0];
+    for (const x of xsU) if (Math.abs(X(x) - rx) < Math.abs(X(best) - rx)) best = x;
+    const cx = X(best), mp = main.pts.find(p => p.x === best) || all.find(p => p.x === best);
+    xh.setAttribute('x1', cx); xh.setAttribute('x2', cx); xh.setAttribute('visibility', 'visible');
+    xd.setAttribute('cx', cx); xd.setAttribute('cy', Y(mp.y)); xd.setAttribute('visibility', 'visible');
+    tip.innerHTML = o.tip ? o.tip(best) : `${fmtShort(fromNum(best))}: ${yf(mp.y)}`;
+    placeTip(tip, cx, Y(mp.y), W);
+  }, () => { xh.setAttribute('visibility', 'hidden'); xd.setAttribute('visibility', 'hidden'); tip.classList.add('hidden'); });
+}
+// bars: [{label, v, tick?, tip}]
+function barChart(el, o) {
+  const bars = o.bars;
+  if (!bars.length || bars.every(b => !b.v)) { el.innerHTML = `<p class="empty">${o.empty || 'Nothing in this range yet.'}</p>`; return; }
+  const { W, H, m } = chartFrame(el, o.height || 200);
+  const hi = Math.max(...bars.map(b => Math.max(b.v || 0, b.tick || 0)));
+  const lo = o.minY != null ? o.minY : 0;
+  const { y0, y1, step } = yAxis(lo, hi, { minStep: o.intY ? 1 : 0 });
+  const Y = y => m.t + (1 - (y - y0) / (y1 - y0)) * (H - m.t - m.b);
+  const slot = (W - m.l - m.r) / bars.length, bw = Math.max(2, Math.min(26, slot * 0.72));
+  const yf = o.yFmt || (v => Math.round(v));
+  let g = '';
+  for (let y = y0; y <= y1 + 1e-9; y += step)
+    g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${Y(y) + 4}" text-anchor="end">${yf(y)}</text>`;
+  const every = Math.max(1, Math.ceil(bars.length / Math.max(1, Math.floor((W - m.l) / 56))));
+  let marks = '';
+  bars.forEach((b, i) => {
+    const cx = m.l + slot * (i + .5), x = cx - bw / 2;
+    if (b.v > y0) {
+      const top = Y(b.v), base = Y(y0), r = Math.min(4, bw / 2, base - top);
+      marks += `<path d="M${x},${base} V${top + r} Q${x},${top} ${x + r},${top} H${x + bw - r} Q${x + bw},${top} ${x + bw},${top + r} V${base} Z" fill="var(--accent)"/>`;
+    }
+    if (b.tick) marks += `<line x1="${cx - bw / 2 - 3}" x2="${cx + bw / 2 + 3}" y1="${Y(b.tick)}" y2="${Y(b.tick)}" stroke="var(--ink)" stroke-width="2"/>`;
+    if (i % every === 0) g += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${esc(b.label)}</text>`;
+  });
+  el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Bar chart')}">${g}${marks}
+    <rect class="hl" y="${m.t}" height="${H - m.t - m.b}" width="${slot}" fill="var(--ink)" opacity=".06" visibility="hidden"/>
+    <rect class="hit" x="${m.l}" y="0" width="${W - m.l - m.r}" height="${H}" fill="transparent"/></svg><div class="tip hidden"></div>`;
+  const hl = el.querySelector('.hl'), tip = el.querySelector('.tip');
+  attachHover(el, null, rx => {
+    const i = Math.max(0, Math.min(bars.length - 1, Math.floor((rx - m.l) / slot)));
+    hl.setAttribute('x', m.l + slot * i); hl.setAttribute('visibility', 'visible');
+    tip.innerHTML = bars[i].tip || `${esc(bars[i].label)}: ${yf(bars[i].v)}`;
+    placeTip(tip, m.l + slot * (i + .5), Y(Math.max(bars[i].v || 0, bars[i].tick || 0)), W);
+  }, () => { hl.setAttribute('visibility', 'hidden'); tip.classList.add('hidden'); });
+}
+
+/* =====================================================================
+   Lifts — latest Strong session of each workout, with next-time targets
+   ===================================================================== */
+const fmtW = w => +(+w).toFixed(2) + '';
+const e1rm = (w, r) => r > 15 ? 0 : w * (1 + r / 30);   // Epley; unreliable past 15 reps
+const monthYr = d => parse(d).toLocaleDateString(undefined, { month: 'short', year: '2-digit' });
+
+// Latest session of each distinct workout name within ~2 weeks of your most recent one.
+function currentSplit() {
+  const ws = S.workouts; if (!ws.length) return [];
+  const lastD = dayNum(ws[ws.length - 1].d), seen = new Map();
+  for (let i = ws.length - 1; i >= 0 && dayNum(ws[i].d) > lastD - 13; i--) {
+    const k = ws[i].n.trim().toLowerCase();
+    if (!seen.has(k)) seen.set(k, ws[i]);
+  }
+  return [...seen.values()].sort((a, b) => dayIdx(parse(a.d)) - dayIdx(parse(b.d)));
+}
+function exerciseIndex() {
+  const idx = {};
+  for (const wk of S.workouts) {
+    const per = {};
+    for (const [e, w, r, so] of wk.s) (per[e] ||= []).push([w, r, so]);
+    for (const [e, sets] of Object.entries(per)) (idx[e] ||= []).push({ d: wk.d, sets });
+  }
+  return idx;
+}
+function incFor(ex, w) {
+  if (S.incr[ex]) return S.incr[ex];
+  const lb = imp();
+  if (/Leg Press|Hack Squat/i.test(ex)) return lb ? 20 : 10;
+  if (/Barbell|Dumbbell|^T Bar/i.test(ex)) return lb ? 5 : 2.5;
+  return lb ? (w < 40 ? 2.5 : 5) : (w < 20 ? 1 : 2.5);   // machine / cable stacks
+}
+// Double progression per set: +1 rep, or once a set reaches the top of the range, +1 step and back to the bottom.
+function nextTarget(ex, sets) {
+  const lo = +S.settings.repLow, hi = +S.settings.repHigh;
+  const work = sets.filter(s => !/^w/i.test(s[2]));   // skip warm-ups
+  if (!work.length) return null;
+  const inc = incFor(ex, Math.max(...work.map(s => s[0])));
+  const next = work.map(([w, r]) => r >= hi ? [+(w + inc).toFixed(2), lo, true] : [w, Math.max(r + 1, Math.min(lo, r + 2)), false]);
+  return { sets: next, up: next.some(s => s[2]), inc };
+}
+const topE1 = sets => Math.max(0, ...sets.map(([w, r]) => e1rm(w, r)));
+function splitRows() {
+  const idx = exerciseIndex();
+  return currentSplit().map(wk => ({
+    wk,
+    exercises: [...new Set(wk.s.map(s => s[0]))].map(ex => {
+      const hist = idx[ex], last = hist[hist.length - 1];
+      let best = { v: 0 };
+      for (const h of hist) for (const [w, r] of h.sets) { const v = e1rm(w, r); if (v > best.v) best = { v, w, r, d: h.d }; }
+      return { ex, last, next: nextTarget(ex, last.sets), best, pct: best.v ? topE1(last.sets) / best.v * 100 : 0 };
+    })
+  }));
+}
+function renderSplit() {
+  $('#repRange').textContent = `${S.settings.repLow}–${S.settings.repHigh} reps`;
+  const rows = splitRows();
+  $('#splitTemplate').classList.toggle('hidden', !rows.length);
+  if (!rows.length) { $('#splitBox').innerHTML = '<p class="empty">Import your Strong CSV in <b>Sync &amp; backup</b> and your split shows up here.</p>'; return; }
+  $('#splitBox').innerHTML = rows.map(({ wk, exercises }) => `<div class="wk">
+    <h3>${DAYS[dayIdx(parse(wk.d))]} · ${esc(wk.n)} <span class="date">last done ${fmtShort(wk.d)}${wk.m ? ` · ${wk.m} min` : ''}</span></h3>
+    <table><tr><th>Exercise</th><th>Last time</th><th>Next time</th><th>vs your best</th></tr>
+    ${exercises.map(({ ex, last, next, best, pct }) => `<tr>
+      <td>${esc(ex)}</td>
+      <td>${last.sets.map(([w, r]) => `${fmtW(w)}×${r}`).join(', ')}${last.d !== wk.d ? `<span class="src">${fmtShort(last.d)}</span>` : ''}</td>
+      <td>${next ? next.sets.map(([w, r, up]) => up ? `<b class="good">${fmtW(w)}×${r}</b>` : `${fmtW(w)}×<b>${r}</b>`).join(', ') +
+        `<span class="src">${next.up ? `<span class="good">▲ weight up</span> on sets that hit ${S.settings.repHigh}, others +1 rep` : '+1 rep a set'} · <button class="link" data-inc="${esc(ex)}">step ${fmtW(next.inc)}</button></span>` : '—'}</td>
+      <td>${pct >= 99.5 ? '<span class="good">🏆 at your best</span>' : `${Math.round(pct)}%<span class="src">best ${fmtW(best.w)}×${best.r} (${monthYr(best.d)})</span>`}</td>
+    </tr>`).join('')}</table></div>`).join('');
+}
+
+/* =====================================================================
+   Weekly check-in
+   ===================================================================== */
+const FEEL = [['energy','Energy'],['hunger','Hunger'],['sleep','Sleep'],['gymFeel','Gym performance']];
+// The check-in day for the current week: the latest one on or before today, or tomorrow's (early check-in).
+function lastSlot() {
+  const t = new Date(), back = (dayIdx(t) - S.settings.checkInDay + 7) % 7;
+  return iso(addDays(t, back === 6 ? 1 : -back));
+}
+function checkinDone() { const s = lastSlot(); return S.checkins.find(c => (c.slot || c.date) >= s); }
+// First check-in: the check-in day on/after the goal start (and at least a week after starting).
+function firstCheckin() {
+  const gs = goalStart(), wk = iso(addDays(parse(startDate()), 7));
+  let d = parse(gs > wk ? gs : wk);
+  while (dayIdx(d) !== +S.settings.checkInDay) d = addDays(d, 1);
+  return iso(d);
+}
+function checkinDue() { return S.settings.onboarded && !checkinDone() && lastSlot() >= firstCheckin(); }
+
+function liftChanges(days) {
+  const set = new Set(days);
+  let up = 0, same = 0, down = 0;
+  for (const hist of Object.values(exerciseIndex())) hist.forEach((h, i) => {
+    if (!i || !set.has(h.d)) return;
+    const now = topE1(h.sets), before = topE1(hist[i - 1].sets);
+    if (!now || !before) return;
+    if (now > before * 1.005) up++; else if (now < before * 0.995) down++; else same++;
+  });
+  return { up, same, down };
+}
+function weekReview(slot) {
+  const days = span7(slot, -7), prev = span7(slot, -14), cal = activeCal();
+  const L = ds => ds.map(d => S.logs[d]).filter(Boolean);
+  const wts = ds => L(ds).filter(l => l.weight > 0).map(l => +l.weight);
+  const cw = wts(days), pw = wts(prev), ls = L(days), kc = ls.filter(l => l.kcal > 0).map(l => +l.kcal);
+  const trendMap = Object.fromEntries(trendSeries().map(o => [o.date, o.t]));
+  const tEnd = days.filter(d => trendMap[d]).pop();
+  return {
+    from: days[0], to: days[6],
+    avgW: cw.length ? +avg(cw).toFixed(2) : null, weighIns: cw.length,
+    prevW: pw.length ? +avg(pw).toFixed(2) : null,
+    trend: tEnd ? +trendMap[tEnd].toFixed(2) : null,
+    rate: recentRate(),
+    kcal: kc.length ? Math.round(avg(kc)) : null, kcalDays: kc.length,
+    target: r10(avg(days.map(d => targetFor(S.logs[d] || plannedActs(d), cal, d)))),
+    aim: avg(days.map(aimRate)),
+    gym: ls.filter(l => l.gym).length, gymPlanned: days.filter(d => plannedActs(d).gym).length,
+    football: ls.filter(l => l.train || l.match).length,
+    runKm: +sum(ls.map(l => +l.run || 0)).toFixed(1),
+    lifts: liftChanges(days)
+  };
+}
+// Goal-aware verdict on the weight trend.
+function verdict(R) {
+  const aim = R.aim || 0, goal = S.settings.goal;
+  if (!S.checkins.length && R.prevW == null && R.avgW != null)
+    return [`Baseline set: ${fw(R.avgW)} ${wu()} average`, 'This is your starting point. From next week the check-in compares against it.'];
+  const rate = R.rate != null ? R.rate : (R.avgW != null && R.prevW != null ? R.avgW - R.prevW : null);
+  if (rate == null) return ['Not enough weigh-ins yet', 'Aim for 4+ morning weigh-ins a week. After about 10 days the trend starts to mean something.'];
+  const r = `${rateTxt(rate)} (aim ${aim ? rateTxt(aim) : 'steady'})`, diff = rate - aim;
+  const adjNote = 'The learnt adjustment below corrects your calories automatically.';
+  if (!aim) {
+    if (Math.abs(rate) <= 0.1) return ['✓ Holding steady: ' + r, 'Maintenance is dialled in. Keep doing exactly this.'];
+    return [(rate > 0 ? '▲ Drifting up: ' : '▼ Drifting down: ') + r, adjNote];
+  }
+  if (Math.abs(diff) <= (aim > 0 ? 0.12 : 0.15)) return ['✓ On track: ' + r, 'Keep doing exactly this.'];
+  if (goal === 'cut' || aim < 0) {
+    return diff < 0
+      ? ['▼ Losing faster than planned: ' + r, 'Losing much faster than planned risks muscle and performance. ' + adjNote]
+      : ['▲ Losing slower than planned: ' + r, 'Check your logged calories are honest, especially weekends. ' + adjNote];
+  }
+  return diff > 0
+    ? ['▲ Gaining faster than planned: ' + r, 'In the first week or two this is mostly water and stored carbs. If it continues, ' + adjNote.toLowerCase()]
+    : ['▼ Gaining slower than planned: ' + r, 'Make sure you actually eat the extra on training days. ' + adjNote];
+}
+function renderCheckin() {
+  const due = checkinDue(), done = checkinDone(), slot = lastSlot();
+  $('#ciBanner').classList.toggle('hidden', !due);
+  $('#ciBanner').innerHTML = due ? `📋 <b>${slot > todayIso() ? `Check-in is tomorrow (${DAYS[S.settings.checkInDay]}). You can do it now.` : 'It\'s check-in time.'}</b> Review last week and lock in the coming week's calories. <button class="btn primary" data-go="checkin">Open check-in</button>` : '';
+  const nextSlot = iso(addDays(parse(slot), 7)), first = firstCheckin(), sp = sportName();
+  if (!done && slot < first) {
+    const maint = todayIso() < goalStart() && S.settings.maintWeeks > 0;
+    $('#ciBody').innerHTML = `<h2>First check-in: ${DAYS[dayIdx(parse(first))]} ${fmtShort(first)}</h2>
+      <p class="help">${maint ? `Until then you're at <b>maintenance</b>. Eat to the targets on the Week plan, weigh in every morning and log your calories. That gives Recomp a clean baseline for your real maintenance.` : 'Until then, weigh in every morning and log your calories.'}
+      At the first check-in you'll review the week and lock in the next one. You can change the start date, maintenance weeks and check-in day in Settings.</p>`;
+  } else if (done) {
+    const nd = span7(done.slot || done.date, 0);
+    $('#ciBody').innerHTML = `<h2>✓ Checked in ${DAYS[dayIdx(parse(done.date))]} ${fmtShort(done.date)} for the week starting ${fmtShort(nd[0])}</h2>
+      <p class="help">This week's calories are locked in: <b>${done.newTarget} kcal/day</b> on average. Next check-in: <b>${DAYS[dayIdx(parse(nextSlot))]} ${fmtShort(nextSlot)}</b>.</p>
+      <div class="daypills">${nd.map(d => `<span>${DAYS[dayIdx(parse(d))]} <b>${targetFor(plannedActs(d), undefined, d)}</b></span>`).join('')}</div>
+      <p><button class="btn" id="ciRedo">Redo this check-in</button></p>`;
+  } else {
+    const R = weekReview(slot), [vt, vd] = verdict(R), prevCal = activeCal(), newCal = liveCal();
+    const nd = span7(slot, 0), newT = nd.map(d => targetFor(plannedActs(d), newCal, d)), oldT = nd.map(d => targetFor(plannedActs(d), prevCal, d));
+    const lastStrong = S.workouts.length ? S.workouts[S.workouts.length - 1].d : null;
+    const tick = ok => ok ? '<span class="good">✓</span>' : '<span class="warn">•</span>';
+    const L = R.lifts, lt = L.up + L.same + L.down;
+    $('#ciBody').innerHTML = `<h2>Weekly check-in · reviewing ${fmtShort(R.from)} – ${fmtShort(R.to)}</h2>
+      <div class="summary">
+        <div>Weight<br><b>${R.avgW != null ? fw(R.avgW) + ' ' + wu() : '—'}</b> avg<span class="src">${R.weighIns} weigh-in${R.weighIns === 1 ? '' : 's'}${R.avgW != null && R.prevW != null ? ` · ${sgn(fw(R.avgW - R.prevW, 2))} ${wu()} vs week before` : ''}</span></div>
+        <div>Eating<br><b>${R.kcal != null ? R.kcal : '—'}</b> kcal avg<span class="src">target avg ${R.target} · ${R.kcalDays}/7 days logged</span></div>
+        <div>Training<br><b>${R.gym}/${R.gymPlanned}</b> gym<span class="src">${sp ? `${R.football} ${esc(sp.toLowerCase())} · ` : ''}${fd(R.runKm)} ${du()} run</span></div>
+        <div>Lifts<br><b>${lt ? `${L.up} up` : '—'}</b>${lt ? ` · ${L.same} same · ${L.down} down` : ''}<span class="src">${lt ? 'vs the previous time you did each exercise' : 'Import Strong to see this'}</span></div>
+      </div>
+      <div class="verdict"><b>${vt}</b><br>${vd}</div>
+      <h2>Before you lock it in</h2>
+      <ul class="checklist">
+        <li>${tick(R.weighIns >= 4)} Weigh-ins last week: ${R.weighIns}/7 <button class="link" data-go="log">Daily log</button></li>
+        ${S.workouts.length ? `<li>${tick(lastStrong && dayNum(lastStrong) >= dayNum(R.to) - 3)} Strong data: latest workout ${lastStrong ? fmtShort(lastStrong) : 'none'}. Export from Strong and <button class="link" data-go="sync">import it</button> if you've trained since.</li>` : ''}
+        ${SV.refresh ? `<li>${tick(SV.lastSync && Date.now() / 1000 - SV.lastSync < 86400)} Strava: last synced ${SV.lastSync ? new Date(SV.lastSync * 1000).toLocaleString() : 'never'} <button class="link" id="ciSync">Sync now</button></li>` : ''}
+        <li>${tick(true)} Anything different this week${sp ? ` (no ${esc(sp.toLowerCase())}, extra runs)` : ''}? Change it in the <button class="link" data-go="plan">Week plan</button>. Targets below update.</li>
+      </ul>
+      <h2>This week's calories</h2>
+      <p class="help">Learnt adjustment: <b>${sgn(newCal.corr)} kcal</b>${S.checkins.length ? ` (was ${sgn(prevCal.corr)})` : ''} · average target <b>${r10(avg(newT))} kcal/day</b>${S.checkins.length ? ` (was ${r10(avg(oldT))})` : ''}</p>
+      <div class="daypills">${nd.map((d, i) => `<span>${DAYS[dayIdx(parse(d))]} <b>${newT[i]}</b></span>`).join('')}</div>
+      <h2>How did the week feel?</h2>
+      <div class="grid2">${FEEL.map(([k, t]) => `<label class="f">${t}<select id="ci_${k}"><option value="">–</option>${[1,2,3,4,5].map(v => `<option>${v}</option>`).join('')}</select></label>`).join('')}</div>
+      <label class="f" style="margin-top:10px">Notes (injuries, missed sessions, anything odd)<textarea id="ciNotes"></textarea></label>
+      <p><button class="btn primary" id="ciDone">Complete check-in &amp; lock this week's calories</button></p>`;
+  }
+  const hist = [...S.checkins].reverse();
+  $('#ciHistory').innerHTML = hist.length ? `<tr><th>Date</th><th>Avg weight</th><th>Change</th><th>Ate / target</th><th>Gym</th><th>Lifts ↑/=/↓</th><th>New target</th><th>Feel (E/H/S/G)</th><th>Notes</th></tr>` +
+    hist.map(c => `<tr><td>${fmtShort(c.date)}</td><td>${c.avgW != null ? fw(c.avgW) : '—'}</td>
+      <td>${c.avgW != null && c.prevW != null ? sgn(fw(c.avgW - c.prevW, 2)) : '—'}</td>
+      <td>${c.kcal || '—'} / ${c.target}</td><td>${c.gym}/${c.gymPlanned}</td>
+      <td>${c.lifts.up}/${c.lifts.same}/${c.lifts.down}</td><td>${c.newTarget}</td>
+      <td>${FEEL.map(([k]) => c.feel[k] || '–').join('/')}</td><td>${esc(c.notes || '')}</td></tr>`).join('')
+    : '<tr><td class="empty">No check-ins yet.</td></tr>';
+}
+function completeCheckin() {
+  const slot = lastSlot(), R = weekReview(slot), c = liveCal();
+  const feel = Object.fromEntries(FEEL.map(([k]) => [k, +$('#ci_' + k).value || null]));
+  S.checkins.push({ date: todayIso(), slot, ...R, corr: c.corr, w: +c.w.toFixed(2),
+    newTarget: r10(avg(span7(slot, 0).map(d => targetFor(plannedActs(d), c, d)))), feel, notes: $('#ciNotes').value.trim() });
+  save(); renderAll();
+}
+
+/* =====================================================================
+   Dashboard
+   ===================================================================== */
+const MUSCLES = [
+  ['Calves', /calf/i],
+  ['Abs', /crunch|plank|\bab\b|abs|leg raise|sit.?up|hanging knee|russian twist/i],
+  ['Legs', /leg press|squat|lunge|leg extension|leg curl|hamstring|romanian|\brdl\b|deadlift|hip thrust|glute|step.?up|hack|good morning/i],
+  ['Shoulders', /shoulder|overhead press|military|lateral|reverse fly|rear delt|face pull|upright|arnold/i],
+  ['Back', /row|pulldown|pull.?up|chin.?up|\blat\b|pullover|shrug|back extension/i],
+  ['Chest', /bench|chest|fly|flye|push.?up|pec|dip/i],
+  ['Triceps', /tricep|pushdown|skull|extension|close.?grip|kickback/i],
+  ['Biceps', /curl/i]
+];
+const muscleOf = ex => (MUSCLES.find(([, re]) => re.test(ex)) || ['Other'])[0];
+function earliestData() {
+  const c = [Object.keys(S.logs).sort()[0], S.workouts[0] && S.workouts[0].d, Object.values(S.acts).map(a => a.d).sort()[0]].filter(Boolean).sort();
+  return c[0] || todayIso();
+}
+function dashFrom() { return dashWeeks ? iso(addDays(monday(new Date()), -7 * (dashWeeks - 1))) : iso(monday(parse(earliestData()))); }
+function weekStartsFrom(from) { const out = []; for (let d = parse(from); iso(d) <= todayIso(); d = addDays(d, 7)) out.push(iso(d)); return out; }
+const wkOf = d => iso(monday(parse(d)));
+const wkLabel = ws => fmtShort(ws);
+
+function runsList() {
+  const out = [], viaStrava = new Set();
+  for (const a of Object.values(S.acts)) if (stravaKind(a, a.d) === 'run' && a.km > 0) { out.push({ d: a.d, km: a.km, min: a.min, name: a.name }); viaStrava.add(a.d); }
+  for (const [d, l] of Object.entries(S.logs)) if (+l.run > 0 && !viaStrava.has(d)) out.push({ d, km: +l.run, min: 0, name: 'Logged run' });
+  return out.sort((a, b) => a.d < b.d ? -1 : 1);
+}
+function sportList() {
+  const out = [], seen = new Set();
+  for (const a of Object.values(S.acts)) { const k = stravaKind(a, a.d); if (k === 'train' || k === 'match') { out.push({ d: a.d, kind: k, min: a.min, kcal: a.kcal }); seen.add(a.d + k); } }
+  for (const [d, l] of Object.entries(S.logs)) for (const k of ['train', 'match']) if (l[k] && !seen.has(d + k)) out.push({ d, kind: k, min: 0, kcal: null });
+  return out.sort((a, b) => a.d < b.d ? -1 : 1);
+}
+function gymDays() {
+  const s = new Set(S.workouts.map(w => w.d));
+  for (const [d, l] of Object.entries(S.logs)) if (l.gym) s.add(d);
+  return [...s].sort();
+}
+function weekTotals(ws) {
+  const days = span7(ws, 0).filter(d => d <= todayIso()), set = new Set(days);
+  const ls = days.map(d => S.logs[d]).filter(Boolean), cal = activeCal();
+  const eat = days.filter(d => S.logs[d] && S.logs[d].kcal > 0);
+  return {
+    gym: gymDays().filter(d => set.has(d)).length,
+    runKm: sum(runsList().filter(r => set.has(r.d)).map(r => r.km)),
+    sport: sportList().filter(s => set.has(s.d)).length,
+    weighIns: ls.filter(l => l.weight > 0).length,
+    kcal: eat.length ? avg(eat.map(d => +S.logs[d].kcal)) : null,
+    target: eat.length ? avg(eat.map(d => targetFor(S.logs[d], cal, d))) : null,
+    days: days.length
+  };
+}
+function strengthSeries(from) {
+  const idx = exerciseIndex(), exs = [...new Set(splitRows().flatMap(r => r.exercises.map(e => e.ex)))];
+  const byWeek = {};
+  for (const ex of exs) {
+    const best = Math.max(0, ...idx[ex].map(h => topE1(h.sets)));
+    if (!best) continue;
+    for (const h of idx[ex]) {
+      if (h.d < from) continue;
+      const v = topE1(h.sets); if (!v) continue;
+      (byWeek[wkOf(h.d)] ||= []).push(v / best * 100);
+    }
+  }
+  return Object.keys(byWeek).sort().map(k => ({ x: dayNum(k), y: avg(byWeek[k]), n: byWeek[k].length }));
+}
+function prList(from, n = 6) {
+  const out = [];
+  for (const [ex, hist] of Object.entries(exerciseIndex())) {
+    let best = 0;
+    for (const h of hist) {
+      let top = null;
+      for (const [w, r] of h.sets) { const v = e1rm(w, r); if (v > (top ? top.v : 0)) top = { v, w, r }; }
+      if (top && top.v > best * 1.001) { if (best > 0 && h.d >= from) out.push({ d: h.d, ex, ...top, prev: best }); best = top.v; }
+    }
+  }
+  return out.sort((a, b) => a.d < b.d ? 1 : -1).slice(0, n);
+}
+function muscleSets() {
+  const from = iso(addDays(new Date(), -28)), c = {};
+  for (const wk of S.workouts) if (wk.d > from) for (const [e, , , so] of wk.s) if (!/^w/i.test(so)) { const mg = muscleOf(e); c[mg] = (c[mg] || 0) + 1; }
+  return Object.entries(c).map(([mg, n]) => [mg, n / 4]).sort((a, b) => b[1] - a[1]);
+}
+function insights() {
+  const out = [], sp = sportName(), today = todayIso();
+  // weight vs goal
+  const rate = recentRate(), aim = aimRate(today);
+  if (rate != null) {
+    const [vt] = verdict({ rate, aim, avgW: 0, prevW: 0 });
+    out.push({ ok: vt.startsWith('✓'), t: `Weight: ${vt.replace(/^[✓▲▼] /, '')}` });
+  } else out.push({ ok: null, t: 'Weight: log ~10 days of morning weigh-ins to see your real rate of change.' });
+  // lifts vs best
+  const ex = splitRows().flatMap(r => r.exercises);
+  if (ex.length) {
+    const near = ex.filter(e => e.pct >= 95).length, worst = [...ex].sort((a, b) => a.pct - b.pct)[0];
+    out.push({ ok: near >= ex.length * 0.7, t: `Lifts: ${near} of ${ex.length} exercises are at 95%+ of your best.${worst.pct < 95 ? ` Furthest back: ${esc(worst.ex)} at ${Math.round(worst.pct)}%.` : ''}` });
+  }
+  // muscle balance
+  const ms = muscleSets().filter(([mg]) => !['Abs', 'Calves', 'Other'].includes(mg));
+  const low = ms.filter(([, n]) => n < 8), high = ms.filter(([, n]) => n > 20);
+  if (ms.length && (low.length || high.length))
+    out.push({ ok: false, t: `Volume: ${low.length ? `${low.map(([m, n]) => `${m} ${n.toFixed(1)}`).join(', ')} sets/week (under ~8)` : ''}${low.length && high.length ? '; ' : ''}${high.length ? `${high.map(([m, n]) => `${m} ${n.toFixed(1)}`).join(', ')} sets/week (over ~20)` : ''}.` });
+  else if (ms.length) out.push({ ok: true, t: 'Volume: every major muscle group gets 8–20 hard sets a week.' });
+  // running trend
+  const runs = runsList(), d28 = iso(addDays(new Date(), -28)), d56 = iso(addDays(new Date(), -56));
+  const r4 = runs.filter(r => r.d > d28), p4 = runs.filter(r => r.d > d56 && r.d <= d28);
+  if (r4.length) {
+    const k4 = sum(r4.map(r => r.km)), kp = sum(p4.map(r => r.km));
+    const paced = rs => rs.filter(r => r.min > 0 && r.km > 1), pace = rs => sum(rs.map(r => r.min)) / dOut(sum(rs.map(r => r.km)));
+    let t = `Running: ${fd(k4 / 4)} ${du()}/week over the last 4 weeks`;
+    if (kp) t += ` (${sgn(Math.round((k4 / kp - 1) * 100))}% vs the 4 before)`;
+    if (paced(r4).length && paced(p4).length) { const a = pace(paced(r4)), b = pace(paced(p4)); t += `. Average pace ${fmtPace(a)}/${du()} (${a < b ? 'faster' : 'slower'} than ${fmtPace(b)})`; }
+    const big = kp && k4 / kp > 1.3;
+    out.push({ ok: big ? false : true, t: t + (big ? '. That\'s a big jump. Build distance gradually to avoid injury.' : '.') });
+  }
+  // calories on heavy days
+  const cal = activeCal(), days = Object.keys(S.logs).filter(d => d > d28 && S.logs[d].kcal > 0);
+  const heavy = days.filter(d => { const l = S.logs[d]; return l.train || l.match || l.run > 0; }), rest = days.filter(d => !heavy.includes(d));
+  const gap = ds => avg(ds.map(d => S.logs[d].kcal - targetFor(S.logs[d], cal, d)));
+  if (heavy.length >= 3) {
+    const gh = gap(heavy);
+    if (gh < -120) out.push({ ok: false, t: `Fuel: on ${sp ? esc(sp.toLowerCase()) + '/' : ''}run days you log ~${Math.round(-gh)} kcal under target. That's where the ${S.settings.goal === 'bulk' ? 'surplus' : 'plan'} leaks.` });
+    else if (rest.length >= 3 && gap(rest) > 150) out.push({ ok: false, t: `Fuel: rest days run ~${Math.round(gap(rest))} kcal over target.` });
+    else out.push({ ok: true, t: 'Fuel: your logged calories match the targets on training and rest days.' });
+  }
+  // consistency
+  const wi = Object.keys(S.logs).filter(d => d > iso(addDays(new Date(), -14)) && S.logs[d].weight > 0).length;
+  out.push({ ok: wi >= 8, t: `Consistency: ${wi} weigh-ins in the last 14 days${S.checkins.length ? ` · ${S.checkins.length} check-in${S.checkins.length > 1 ? 's' : ''} done` : ''}.` });
+  return out;
+}
+function renderDashboard() {
+  if ($('#t-dash').classList.contains('hidden')) return;
+  document.querySelectorAll('#dashRange button').forEach(b => b.classList.toggle('on', +b.dataset.w === dashWeeks));
+  document.querySelectorAll('.du').forEach(e => e.textContent = du());
+  const from = dashFrom(), weeks = weekStartsFrom(from), sp = sportName();
+  // tiles: this week vs the 4 before
+  const cur = weekTotals(weekKey(0)), prev = [1, 2, 3, 4].map(i => weekTotals(weekKey(-i)));
+  const pa = k => avg(prev.map(p => p[k] || 0));
+  const tile = (lbl, val, cmp) => `<div class="tile"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="cmp">${cmp}</div></div>`;
+  $('#dTiles').innerHTML =
+    tile('Gym this week', `${cur.gym}/${weekPlan(weekKey(0)).filter(a => a.gym).length}`, `4-wk avg ${pa('gym').toFixed(1)}`) +
+    tile('Running', `${fd(cur.runKm)} ${du()}`, `4-wk avg ${fd(pa('runKm'))}`) +
+    (sp ? tile(esc(cap(sp)), `${cur.sport}`, `4-wk avg ${pa('sport').toFixed(1)}`) : '') +
+    tile('Weigh-ins', `${cur.weighIns}/${cur.days}`, `4-wk avg ${pa('weighIns').toFixed(1)}`) +
+    tile('Calories vs target', cur.kcal != null ? sgn(Math.round(cur.kcal - cur.target)) : '—', cur.kcal != null ? `avg ${Math.round(cur.kcal)} eaten` : 'nothing logged yet');
+  $('#dInsights').innerHTML = insights().map(i => `<li><span class="ic">${i.ok === true ? '<span class="good">✓</span>' : i.ok === false ? '<span class="warn">⚠</span>' : 'ℹ︎'}</span><span>${i.t}</span></li>`).join('');
+
+  // body
+  const tr = trendSeries().filter(o => o.date >= from);
+  lineChart($('#cWeight'), { label: 'Weight trend', height: 230, empty: 'Log at least 2 weigh-ins to see your chart.',
+    series: [{ type: 'dots', pts: tr.map(o => ({ x: o.x, y: wOut(o.w) })) }, { type: 'line', pts: tr.map(o => ({ x: o.x, y: wOut(o.t) })) }],
+    yFmt: v => v.toFixed(1),
+    tip: x => { const o = tr.find(p => p.x === x), l = S.logs[o.date]; return `<b>${DAYS[dayIdx(parse(o.date))]} ${fmtShort(o.date)}</b><br>Weight ${fw(o.w, 2)} ${wu()}<br>Trend ${fw(o.t, 2)} ${wu()}${l && l.kcal ? `<br>Ate ${l.kcal} kcal` : ''}`; } });
+  const cal = activeCal();
+  const kb = weeks.map(ws => {
+    const eat = span7(ws, 0).filter(d => d >= from && S.logs[d] && S.logs[d].kcal > 0);
+    if (!eat.length) return { label: wkLabel(ws), v: 0 };
+    const v = avg(eat.map(d => +S.logs[d].kcal)), t = avg(eat.map(d => targetFor(S.logs[d], cal, d)));
+    return { label: wkLabel(ws), v, tick: t, tip: `<b>Week of ${fmtShort(ws)}</b><br>Avg eaten ${Math.round(v)} kcal<br>Avg target ${Math.round(t)} kcal<br>${eat.length} day${eat.length > 1 ? 's' : ''} logged` };
+  });
+  const firstK = kb.findIndex(b => b.v);
+  barChart($('#cKcal'), { label: 'Weekly calories', bars: firstK < 0 ? [] : kb.slice(firstK), minY: Math.max(0, Math.floor(Math.min(...kb.filter(b => b.v).map(b => Math.min(b.v, b.tick)), 99999) / 500) * 500 - 500), empty: 'Log calories in the Daily log to see this.' });
+  renderProgSummary();
+
+  // lifts
+  const ss = strengthSeries(from);
+  lineChart($('#cStrength'), { label: 'Strength index', height: 200, empty: 'Import Strong workouts to see this.',
+    series: [{ type: 'line', pts: ss }], ref: 100, refLabel: 'your best', yFmt: v => Math.round(v) + '%',
+    tip: x => { const p = ss.find(q => q.x === x); return `<b>Week of ${fmtShort(fromNum(x))}</b><br>${p.y.toFixed(1)}% of best<br>${p.n} exercise session${p.n > 1 ? 's' : ''}`; } });
+  const exList = [...new Set(splitRows().flatMap(r => r.exercises.map(e => e.ex)))];
+  const allEx = Object.keys(exerciseIndex()).sort();
+  const opts = exList.length ? exList : allEx;
+  if (!dashEx || !allEx.includes(dashEx)) dashEx = opts[0] || null;
+  $('#exPick').innerHTML = opts.map(e => `<option ${e === dashEx ? 'selected' : ''}>${esc(e)}</option>`).join('') || '<option>No exercises yet</option>';
+  const eh = dashEx ? (exerciseIndex()[dashEx] || []).filter(h => h.d >= from).map(h => ({ x: dayNum(h.d), y: topE1(h.sets), sets: h.sets, d: h.d })).filter(p => p.y) : [];
+  lineChart($('#cExercise'), { label: 'Exercise e1RM', height: 200, empty: 'No sessions for this exercise in the selected range.',
+    series: [{ type: 'line', pts: eh }, { type: 'dots', pts: eh, color: 'var(--accent)' }], yFmt: v => Math.round(v),
+    tip: x => { const p = eh.find(q => q.x === x); return `<b>${fmtShort(p.d)}</b><br>e1RM ${fmtW(p.y.toFixed(1))}<br>${p.sets.map(([w, r]) => `${fmtW(w)}×${r}`).join(', ')}`; } });
+  const ms = muscleSets(), mx = Math.max(24, ...ms.map(([, n]) => n));
+  $('#cMuscles').innerHTML = ms.length ? ms.map(([mg, n]) => `<div class="hb" title="${mg}: ${n.toFixed(1)} sets/week"><span>${mg}</span>
+      <span class="track"><span class="band" style="left:${10 / mx * 100}%;width:${10 / mx * 100}%"></span><span class="bar" style="width:${Math.min(100, n / mx * 100)}%"></span></span>
+      <span class="n">${n.toFixed(1)}</span></div>`).join('') : '<p class="empty">Import Strong workouts to see this.</p>';
+  const prs = prList(from);
+  $('#cPRs').innerHTML = prs.length ? prs.map(p => `<li><span><b>${esc(p.ex)}</b><span class="src">${fmtW(p.w)}×${p.r} · e1RM ${Math.round(p.v)} (was ${Math.round(p.prev)})</span></span><span>${fmtShort(p.d)}</span></li>`).join('')
+    : '<li class="empty" style="display:block">No new bests in this range yet.</li>';
+
+  // running
+  const runs = runsList().filter(r => r.d >= from);
+  const rb = weeks.map(ws => { const rs = runs.filter(r => wkOf(r.d) === ws); const k = sum(rs.map(r => r.km));
+    return { label: wkLabel(ws), v: dOut(k), tip: `<b>Week of ${fmtShort(ws)}</b><br>${fd(k)} ${du()} · ${rs.length} run${rs.length === 1 ? '' : 's'}` }; });
+  barChart($('#cRunKm'), { label: 'Weekly running distance', bars: rb, yFmt: v => +v.toFixed(1), empty: 'No runs in this range. Connect Strava or log run distance.' });
+  const paced = runs.filter(r => r.min > 0 && r.km > 1).map(r => ({ x: dayNum(r.d), y: r.min / dOut(r.km), r }));
+  const roll = paced.map((p, i) => ({ x: p.x, y: avg(paced.slice(Math.max(0, i - 4), i + 1).map(q => q.y)) }));
+  lineChart($('#cPace'), { label: 'Running pace', height: 200, empty: 'Pace needs runs synced from Strava.',
+    series: [{ type: 'dots', pts: paced }, { type: 'line', pts: roll }], yFmt: v => fmtPace(v),
+    tip: x => { const p = paced.find(q => q.x === x); return `<b>${fmtShort(p.r.d)}</b><br>${esc(p.r.name)}<br>${fd(p.r.km, 2)} ${du()} · ${fmtPace(p.y)}/${du()}`; } });
+  const longest = runs.reduce((a, r) => r.km > (a ? a.km : 0) ? r : a, null);
+  const pr = paced.slice(-8);
+  $('#runSummary').innerHTML = runs.length ? `
+    <div>Total in range<br><b>${fd(sum(runs.map(r => r.km)))} ${du()}</b> <span class="pill">${runs.length} runs</span></div>
+    <div>Longest run<br><b>${fd(longest.km)} ${du()}</b> <span class="pill">${fmtShort(longest.d)}</span></div>
+    <div>Avg pace, last ${pr.length} runs<br><b>${pr.length ? fmtPace(avg(pr.map(p => p.y))) + '/' + du() : '—'}</b></div>` : '';
+
+  // sport
+  $('#sportSec').classList.toggle('hidden', !sp);
+  if (sp) {
+    $('#sportHdr').textContent = cap(sp);
+    const sl = sportList().filter(s => s.d >= from);
+    const sb = weeks.map(ws => { const s = sl.filter(x => wkOf(x.d) === ws), m = s.filter(x => x.kind === 'match').length;
+      return { label: wkLabel(ws), v: s.length, tip: `<b>Week of ${fmtShort(ws)}</b><br>${s.length - m} training · ${m} match${m === 1 ? '' : 'es'}` }; });
+    barChart($('#cSport'), { label: `${sp} sessions per week`, bars: sb, intY: true, yFmt: v => Math.round(v), empty: `No ${esc(sp.toLowerCase())} sessions in this range.` });
+    const withMin = sl.filter(s => s.min > 0), withK = sl.filter(s => s.kcal > 0);
+    $('#sportSummary').innerHTML = sl.length ? `
+      <div>Sessions<br><b>${sl.length}</b> <span class="pill">${sl.filter(s => s.kind === 'match').length} matches</span></div>
+      <div>Avg duration<br><b>${withMin.length ? Math.round(avg(withMin.map(s => s.min))) + ' min' : '—'}</b></div>
+      <div>Avg watch calories<br><b>${withK.length ? Math.round(avg(withK.map(s => s.kcal))) + ' kcal' : '—'}</b> <span class="pill">plan uses ${S.settings.train}/${S.settings.match}</span></div>`
+      : `<div>No ${esc(sp.toLowerCase())} sessions in this range yet.</div>`;
+  }
+}
+function renderProgSummary() {
+  const t = trendSeries();
+  if (!t.length) { $('#progSummary').innerHTML = ''; return; }
+  const first = t[0], last = t[t.length-1], weeks = Math.max(1, (last.x - first.x) / 7);
+  const r4 = recentRate(28), aim = +S.settings.adjust * 7 / KCAL_PER_KG;
+  $('#progSummary').innerHTML = `
+    <div>Since ${fmtShort(first.date)}<br><b>${sgn(fw(last.t - first.w))} ${wu()}</b> over ${weeks.toFixed(1)} weeks</div>
+    <div>Last 4 weeks<br><b>${r4 == null ? '—' : rateTxt(r4)}</b></div>
+    <div>Goal pace<br><b>${aim ? sgn(fw(aim * 52 / 12, 2)) + ' ' + wu() + '/month' : 'hold steady'}</b></div>`;
+}
+
+/* ---------- render: settings ---------- */
+const DAY_OPTS = Object.fromEntries(DAYS.map((d, i) => [i, d]));
+const GOALS = { cut: 'Lose fat (cut)', maintain: 'Maintain', bulk: 'Build muscle (bulk)' };
+const GOAL_DEFAULT = { cut: -400, maintain: 0, bulk: 200 };
+// [key, label, type]: number step | 'w' weight | 'perW' g per weight unit | 'perD' kcal per distance unit | 'height' | 'date' | 'text' | {options}
+const FIELDS = [
+  ['units','Units',{metric:'Metric (kg, cm, km)', imperial:'Imperial (lb, ft/in, mi)'}],
+  ['sex','Sex',{m:'Male',f:'Female'}],['age','Age',1],['heightCm','Height','height'],['startWeight','Starting weight','w'],
+  ['goal','Goal',GOALS],['adjust','Daily calories vs maintenance (− deficit, + surplus)',10],
+  ['factor','Daily-life factor (1.25 desk job · 1.3 desk + walking · 1.4 on your feet · 1.5 physical job)',0.05],
+  ['startDate','Start date','date'],['maintWeeks','Maintenance weeks before the goal starts',1],['checkInDay','Weekly check-in day',DAY_OPTS],
+  ['gym','Gym session (kcal)',10],['runPerKm',() => `Run kcal per ${du()} (0 = auto)`,'perD'],
+  ['sport','Team sport (blank = none)','text'],
+  ['train',() => `${cap(sportName() || 'Sport')} training (kcal)`,10],['match',() => `${cap(sportName() || 'Sport')} match (kcal)`,10],
+  ['matchDay','Match day (Strava sessions on this day count as a match)',DAY_OPTS],
+  ['proteinPerKg',() => `Protein (g per ${wu()} bodyweight)`,'perW'],['fatPerKg',() => `Fat (g per ${wu()} bodyweight)`,'perW'],
+  ['repLow','Rep range: bottom',1],['repHigh','Rep range: top (hit this on every set, then add weight)',1]
+];
+const SPORT_FIELDS = ['train', 'match', 'matchDay'];
+function fieldVal(k, t) {
+  const v = S.settings[k];
+  if (t === 'w') return +fw(v);
+  if (t === 'perW') return +(v / (imp() ? LB : 1)).toFixed(2);
+  if (t === 'perD') return v ? Math.round(v * (imp() ? MI : 1)) : 0;
+  return v;
+}
+function renderSettings() {
+  $('#settingsForm').innerHTML = FIELDS.filter(([k]) => hasSport() || !SPORT_FIELDS.includes(k)).map(([k, lbl, t]) => {
+    const L = typeof lbl === 'function' ? lbl() : lbl;
+    if (t === 'height') return imp()
+      ? `<label class="f">Height (ft / in)<span class="row" style="gap:6px"><input type="number" step="1" data-h="ft" value="${Math.floor(S.settings.heightCm / 30.48)}" style="width:70px"><input type="number" step="1" data-h="in" value="${Math.round(S.settings.heightCm / 2.54 % 12)}" style="width:70px"></span></label>`
+      : `<label class="f">Height (cm)<input type="number" step="1" data-h="cm" value="${Math.round(S.settings.heightCm)}"></label>`;
+    if (t === 'date') return `<label class="f">${L}<input type="date" data-s="${k}" data-t="date" value="${S.settings[k]}"></label>`;
+    if (t === 'text') return `<label class="f">${L}<input type="text" list="sportList" data-s="${k}" data-t="text" value="${esc(S.settings[k])}"></label>`;
+    if (typeof t === 'object') return `<label class="f">${L}<select data-s="${k}" data-t="opt">${Object.entries(t).map(([v, n]) => `<option value="${v}" ${String(S.settings[k]) === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>`;
+    const typ = typeof t === 'string' ? t : 'n', step = t === 'w' ? 0.1 : t === 'perW' ? 0.05 : t === 'perD' ? 1 : t;
+    return `<label class="f">${k === 'startWeight' ? `${L} (${wu()})` : L}<input type="number" step="${step}" data-s="${k}" data-t="${typ}" value="${fieldVal(k, t)}"></label>`;
+  }).join('') + `<datalist id="sportList">${Object.keys(SPORT_EMOJI).map(s => `<option value="${cap(s)}">`).join('')}</datalist>`;
+}
+
+function renderAll() {
+  document.querySelectorAll('.sportOnly').forEach(e => e.classList.toggle('hidden', !hasSport()));
+  document.querySelectorAll('.sportTrainLbl').forEach(e => e.textContent = `${cap(sportName())} training`);
+  document.querySelectorAll('.sportMatchLbl').forEach(e => e.textContent = `${cap(sportName())} match`);
+  document.querySelectorAll('.du').forEach(e => e.textContent = du());
+  $('#demoBanner').classList.toggle('hidden', !S.demo);
+  $('#demoBanner').innerHTML = S.demo ? `👀 <b>You're looking at demo data.</b> Have a click around. <button class="btn primary" id="leaveDemo">Start with my own data</button>` : '';
+  renderStats(); renderPlan(); renderLog(); renderStrava(); renderSplit(); renderCheckin(); renderDashboard();
+}
+
+/* =====================================================================
+   Onboarding + demo data
+   ===================================================================== */
+let OB = null;
+function openOnboarding() {
+  const s = S.settings;
+  OB = { units: s.units, sex: s.sex, age: s.onboarded ? s.age : '', heightCm: s.onboarded ? s.heightCm : '', weight: s.onboarded ? s.startWeight : '',
+    goal: s.onboarded ? s.goal : 'maintain', adjust: s.onboarded ? s.adjust : 0, factor: s.factor, sport: s.sport, matchDay: s.matchDay,
+    checkInDay: s.checkInDay, startDate: s.onboarded && s.startDate ? s.startDate : todayIso(), maint: s.onboarded ? +s.maintWeeks > 0 : false,
+    days: S.template.map(a => ({ ...a })) };
+  renderOnboarding();
+  $('#onboard').classList.remove('hidden');
+}
+function paceOptions(goal) {
+  const conv = kg => OB.units === 'imperial' ? kg * LB : kg;
+  const rr = kcal => `${sgn(conv(kcal * 7 / KCAL_PER_KG).toFixed(2))} ${OB.units === 'imperial' ? 'lb' : 'kg'}/week`;
+  return { cut: [[-300, `Steady: −300 kcal/day (~${rr(-300)})`], [-500, `Faster: −500 kcal/day (~${rr(-500)})`]],
+    maintain: [[0, 'Maintain: 0 kcal/day']],
+    bulk: [[150, `Lean: +150 kcal/day (~${rr(150)})`], [250, `Faster: +250 kcal/day (~${rr(250)})`]] }[goal];
+}
+function renderOnboarding() {
+  const im = OB.units === 'imperial', po = paceOptions(OB.goal);
+  if (!po.some(([v]) => v === +OB.adjust)) OB.adjust = po[0][0];
+  const hFt = OB.heightCm ? Math.floor(OB.heightCm / 30.48) : '', hIn = OB.heightCm ? Math.round(OB.heightCm / 2.54 % 12) : '';
+  const wv = OB.weight ? +(im ? OB.weight * LB : OB.weight).toFixed(1) : '';
+  const cell = (i, f) => `<td><input type="checkbox" data-d="${i}" data-f="${f}" ${OB.days[i][f] ? 'checked' : ''} aria-label="${DAYS[i]} ${f}"></td>`;
+  $('#onboard').innerHTML = `<div class="card" role="dialog" aria-modal="true" aria-labelledby="obTitle">
+    <div class="brand"><svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="var(--accent)"/><path d="M6 22 L13 15 L18 19 L26 10" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><h2 id="obTitle" style="margin:0">Welcome to Recomp</h2></div>
+    <p class="help">About a minute to set up. Everything stays in this browser. You can change any of it later in Settings.</p>
+    <div class="grid2">
+      <label class="f">Units<select data-ob="units"><option value="metric" ${!im ? 'selected' : ''}>Metric (kg, cm, km)</option><option value="imperial" ${im ? 'selected' : ''}>Imperial (lb, ft/in, mi)</option></select></label>
+      <label class="f">Sex<select data-ob="sex"><option value="m" ${OB.sex === 'm' ? 'selected' : ''}>Male</option><option value="f" ${OB.sex === 'f' ? 'selected' : ''}>Female</option></select></label>
+      <label class="f">Age<input type="number" data-ob="age" value="${OB.age}" min="14" max="90"></label>
+      ${im ? `<label class="f">Height (ft / in)<span class="row" style="gap:6px"><input type="number" data-ob="hft" value="${hFt}" style="width:70px"><input type="number" data-ob="hin" value="${hIn}" style="width:70px"></span></label>`
+           : `<label class="f">Height (cm)<input type="number" data-ob="hcm" value="${OB.heightCm ? Math.round(OB.heightCm) : ''}"></label>`}
+      <label class="f">Weight (${im ? 'lb' : 'kg'})<input type="number" step="0.1" data-ob="weight" value="${wv}"></label>
+      <label class="f">Goal<select data-ob="goal">${Object.entries(GOALS).map(([k, n]) => `<option value="${k}" ${OB.goal === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="f">Pace<select data-ob="adjust">${po.map(([v, n]) => `<option value="${v}" ${+OB.adjust === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="f">Day to day (outside training)<select data-ob="factor">${[[1.25,'Desk job, under 5k steps'],[1.3,'Desk job, 5–8k steps'],[1.4,'On your feet a lot, 8–12k steps'],[1.5,'Physical job, 12k+ steps']].map(([v, n]) => `<option value="${v}" ${+OB.factor === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+      <label class="f">Team sport (optional)<input type="text" list="obSports" data-ob="sport" value="${esc(OB.sport)}" placeholder="e.g. Football"><datalist id="obSports">${Object.keys(SPORT_EMOJI).map(s => `<option value="${cap(s)}">`).join('')}</datalist></label>
+      <label class="f">Weekly check-in day<select data-ob="checkInDay">${DAYS.map((d, i) => `<option value="${i}" ${+OB.checkInDay === i ? 'selected' : ''}>${d}</option>`).join('')}</select></label>
+      <label class="f">Start date<input type="date" data-ob="startDate" value="${OB.startDate}"></label>
+      <label class="f" style="flex-direction:row;align-items:center;gap:6px;color:var(--ink2);font-size:13px"><input type="checkbox" data-ob="maint" ${OB.maint ? 'checked' : ''}> Start with 1 week at maintenance (recommended: gives a clean baseline)</label>
+    </div>
+    <h3 style="margin:16px 0 4px">Your usual week</h3>
+    <div class="tablewrap" style="margin-top:4px"><table class="obweek">
+      <tr><th></th>${DAYS.map(d => `<th>${d}</th>`).join('')}</tr>
+      <tr><td>🏋️ Gym</td>${DAYS.map((_, i) => cell(i, 'gym')).join('')}</tr>
+      ${OB.sport.trim() ? `<tr><td>${SPORT_EMOJI[OB.sport.trim().toLowerCase()] || '🏅'} ${esc(cap(OB.sport.trim()))} training</td>${DAYS.map((_, i) => cell(i, 'train')).join('')}</tr>
+      <tr><td>🏟️ Match</td>${DAYS.map((_, i) => cell(i, 'match')).join('')}</tr>` : ''}
+      <tr><td>🏃 Run (${im ? 'mi' : 'km'})</td>${DAYS.map((_, i) => `<td><input type="number" min="0" step="0.5" data-d="${i}" data-f="run" value="${OB.days[i].run ? +(im ? OB.days[i].run / MI : OB.days[i].run).toFixed(1) : ''}" aria-label="${DAYS[i]} run"></td>`).join('')}</tr>
+    </table></div>
+    <p class="status" id="obErr"></p>
+    <div class="row between" style="margin-top:8px">
+      <button class="btn" id="obDemo">Try with demo data</button>
+      <div class="row">${S.settings.onboarded ? '<button class="btn" id="obCancel">Cancel</button>' : ''}<button class="btn primary" id="obStart">${S.settings.onboarded ? 'Save' : 'Start'}</button></div>
+    </div></div>`;
+}
+function finishOnboarding() {
+  const im = OB.units === 'imperial';
+  const h = OB.heightCm, w = +OB.weight, age = +OB.age;
+  if (!(age >= 14 && age <= 90) || !(h >= 120 && h <= 230) || !(w >= 35 && w <= 300))
+    return $('#obErr').innerHTML = '<span class="warn">Please fill in age, height and weight.</span>';
+  const sport = OB.sport.trim();
+  Object.assign(S.settings, { units: OB.units, sex: OB.sex, age, heightCm: Math.round(h), startWeight: +w.toFixed(2), goal: OB.goal,
+    adjust: +OB.adjust, factor: +OB.factor, sport, checkInDay: +OB.checkInDay, startDate: OB.startDate || todayIso(),
+    maintWeeks: OB.maint ? 1 : 0, onboarded: true });
+  S.template = OB.days.map(a => { const r = { ...a }; if (!sport) { delete r.train; delete r.match; } return r; });
+  for (const k of Object.keys(S.plans)) if (k >= weekKey(0)) delete S.plans[k];
+  applyImports(); save();
+  $('#onboard').classList.add('hidden');
+  renderSettings(); renderAll(); fillLogForm(todayIso());
+}
+// Deterministic fake data so people (and README screenshots) can see every feature.
+function loadDemo() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const today = new Date(), start = addDays(monday(today), -7 * 10);
+  S = defaults(); S.demo = true;
+  Object.assign(S.settings, { units: 'metric', sex: 'm', age: 28, heightCm: 180, startWeight: 76, goal: 'bulk', adjust: 200, factor: 1.3,
+    sport: 'Football', matchDay: 5, checkInDay: 0, startDate: iso(start), maintWeeks: 1, onboarded: true, train: 550, match: 700 });
+  S.template = [{ gym: 1, w: 'Legs' }, { gym: 1, w: 'Push', run: 5 }, { gym: 1, train: 1, w: 'Pull' }, { run: 8 }, { gym: 1, w: 'Upper' }, { match: 1 }, {}];
+  const plan = {
+    Legs: [['Leg Press', 130, 10], ['Romanian Deadlift (Dumbbell)', 30, 10], ['Leg Extension (Machine)', 55, 12], ['Seated Leg Curl (Machine)', 45, 12], ['Standing Calf Raise (Machine)', 60, 12]],
+    Push: [['Bench Press (Barbell)', 72.5, 8], ['Incline Bench Press (Dumbbell)', 26, 10], ['Shoulder Press (Machine)', 45, 10], ['Lateral Raise (Dumbbell)', 10, 12], ['Triceps Pushdown (Cable)', 25, 12]],
+    Pull: [['Lat Pulldown (Cable)', 62.5, 10], ['Seated Row (Cable)', 55, 10], ['Reverse Fly (Cable)', 10, 12], ['Preacher Curl (Dumbbell)', 14, 10], ['Hammer Curl (Dumbbell)', 16, 10]],
+    Upper: [['Incline Bench Press (Dumbbell)', 26, 10], ['T Bar Row', 40, 10], ['Lateral Raise (Dumbbell)', 10, 12], ['Bicep Curl (Cable)', 25, 12], ['Triceps Extension', 20, 12]]
+  };
+  const dayOf = { Legs: 0, Push: 1, Pull: 2, Upper: 4 }, rnd25 = v => Math.round(v / 2.5) * 2.5;
+  for (let w = -30; w < 10; w++) {                       // 30 weeks of history before the start (peak, then a cut), then 10 weeks of recovery
+    const f = w < -12 ? 0.96 + (w + 30) * 0.004 : w < 0 ? 1.03 - (w + 12) * 0.008 : 0.94 + w * 0.012;
+    for (const [n, ex] of Object.entries(plan)) {
+      const d = iso(addDays(start, 7 * w + dayOf[n])); if (d >= iso(today)) continue;
+      S.workouts.push({ id: d + ' 18:00:00', d, n, m: 50 + Math.round(rnd() * 15),
+        s: ex.flatMap(([e, base, reps]) => [0, 1, 2].map(i => [e, rnd25(base * f), Math.max(6, reps - i - Math.round(rnd() * 2)), String(i + 1)])) });
+    }
+  }
+  let wt = 75.6, id = 1;
+  for (let d = new Date(start); iso(d) < iso(today); d = addDays(d, 1)) {
+    const ds = iso(d), a = S.template[dayIdx(d)], wk = Math.floor((d - start) / 6048e5);
+    wt += (ds >= iso(addDays(start, 7)) ? 0.026 : 0) + (rnd() - 0.5) * 0.02;
+    const l = logFor(ds);
+    if (rnd() > 0.12) l.weight = +(wt + (rnd() - 0.5) * 0.7).toFixed(2);
+    Object.assign(l, { gym: a.gym ? 1 : 0, train: a.train ? 1 : 0, match: a.match ? 1 : 0, run: 0 });
+    const tgt = r10(formulaTDEE(a, 76) + (ds >= iso(addDays(start, 7)) ? 200 : 0));
+    if (rnd() > 0.1) l.kcal = r10(tgt + (rnd() - 0.55) * 300 - ((a.train || a.match) ? 120 : 0));
+    if (a.run) { const km = +(a.run + (rnd() - 0.5) * 1.5).toFixed(2); S.acts[id++] = { d: ds, type: 'Run', name: a.run > 6 ? 'Intervals' : 'Easy run', km, min: Math.round(km * (5.9 - wk * 0.03 + (rnd() - 0.5) * 0.4)), kcal: Math.round(km * 62) }; }
+    if (a.train) S.acts[id++] = { d: ds, type: 'Soccer', name: 'Evening Football', km: 0, min: 75 + Math.round(rnd() * 20), kcal: 520 + Math.round(rnd() * 150) };
+    if (a.match) S.acts[id++] = { d: ds, type: 'Soccer', name: 'Match vs Rovers', km: 0, min: 90, kcal: 650 + Math.round(rnd() * 150) };
+  }
+  applyImports(); save();
+  $('#onboard').classList.add('hidden');
+  renderSettings(); renderAll(); fillLogForm(todayIso());
+}
+
+/* =====================================================================
+   Excel backup — auto-writes to a linked .xlsx via the File System Access API
+   ===================================================================== */
+const idb = (mode, fn, name = 'recomp') => new Promise((res, rej) => {
+  const o = indexedDB.open(name, 1);
+  o.onupgradeneeded = () => o.result.createObjectStore('kv');
+  o.onerror = () => rej(o.error);
+  o.onsuccess = () => {
+    const tx = o.result.transaction('kv', mode), req = fn(tx.objectStore('kv'));
+    tx.oncomplete = () => res(req && req.result);
+    tx.onerror = () => rej(tx.error);
+  };
+});
+let xlHandle = null, xlState = 'none', xlLast = null, xlErr = '', xlTimer = null;
+
+function cellDate(v) {
+  if (typeof v === 'number') { const d = new Date(Math.round((v - 25569) * 864e5)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth()+1)}-${pad(d.getUTCDate())}`; }
+  if (v instanceof Date) return iso(v);
+  return v ? anyDate(String(v)) : null;
+}
+function anyDate(s) {
+  let m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  m = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${pad(m[2])}-${pad(m[1])}`;   // dd/mm/yyyy
+  return null;
+}
+
+function buildWorkbook() {
+  const trend = Object.fromEntries(trendSeries().map(o => [o.date, o.t]));
+  const dates = Object.keys(S.logs).sort();
+  const logRows = dates.map(d => {
+    const l = S.logs[d], sv = Object.values(l.strava || {});
+    return {
+      Date: d, Day: DAYS[dayIdx(parse(d))],
+      'Weight (kg)': l.weight || '', 'Trend (kg)': trend[d] ? +trend[d].toFixed(2) : '',
+      'Calories eaten': l.kcal || '',
+      Gym: l.gym ? 1 : 0, Training: l.train ? 1 : 0, Match: l.match ? 1 : 0, 'Run (km)': l.run || 0,
+      'Strong workout': l.strong ? l.strong.name : '', 'Strong sets': l.strong ? l.strong.sets : '', 'Strong volume': l.strong ? l.strong.volume : '',
+      'Strava activities': sv.map(a => `${a.name} (${a.type}${a.km ? ', ' + a.km + ' km' : ''})`).join('; '),
+      'Watch kcal': sum(sv.map(a => a.kcal || 0)) || ''
+    };
+  });
+  const weeks = {};
+  for (const d of dates) (weeks[wkOf(d)] ||= []).push(d);
+  const weekRows = Object.entries(weeks).map(([k, ds]) => {
+    const ls = ds.map(d => S.logs[d]);
+    const ws = ls.filter(l => l.weight > 0).map(l => +l.weight), ks = ls.filter(l => l.kcal > 0).map(l => +l.kcal);
+    const lastT = ds.filter(d => trend[d]).pop();
+    return {
+      'Week starting': k, 'Weigh-ins': ws.length,
+      'Avg weight (kg)': ws.length ? +avg(ws).toFixed(2) : '', 'Trend at end (kg)': lastT ? +trend[lastT].toFixed(2) : '',
+      'Avg calories eaten': ks.length ? Math.round(avg(ks)) : '',
+      'Gym sessions': ls.filter(l => l.gym).length, 'Sport sessions': ls.filter(l => l.train || l.match).length,
+      'Run km': +sum(ls.map(l => +l.run || 0)).toFixed(1),
+      'Gym volume': sum(ls.map(l => l.strong ? l.strong.volume : 0)) || ''
+    };
+  });
+  const setRows = FIELDS.map(([k, lbl]) => ({ Key: k, Setting: typeof lbl === 'function' ? lbl() : lbl, Value: S.settings[k] }));
+
+  const wb = XLSX.utils.book_new();
+  const add = (name, rows, header, widths) => {
+    const ws = XLSX.utils.json_to_sheet(rows, { header });
+    ws['!cols'] = widths.map(w => ({ wch: w }));
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  };
+  add('Log', logRows, ['Date','Day','Weight (kg)','Trend (kg)','Calories eaten','Gym','Training','Match','Run (km)','Strong workout','Strong sets','Strong volume','Strava activities','Watch kcal'],
+      [11,5,11,10,14,5,9,7,9,20,11,14,45,11]);
+  add('Weekly', weekRows, ['Week starting','Weigh-ins','Avg weight (kg)','Trend at end (kg)','Avg calories eaten','Gym sessions','Sport sessions','Run km','Gym volume'],
+      [14,10,15,17,18,13,15,9,12]);
+  const nextRows = splitRows().flatMap(({ wk, exercises }) => exercises.map(({ ex, last, next, best, pct }) => ({
+    Day: DAYS[dayIdx(parse(wk.d))], Workout: wk.n, Exercise: ex,
+    'Last time': last.sets.map(([w, r]) => `${fmtW(w)}x${r}`).join(', '),
+    'Next time': next ? next.sets.map(([w, r]) => `${fmtW(w)}x${r}`).join(', ') : '',
+    'Best set': best.v ? `${fmtW(best.w)}x${best.r} (${best.d})` : '', '% of best': Math.round(pct)
+  })));
+  add('Next session', nextRows, ['Day','Workout','Exercise','Last time','Next time','Best set','% of best'], [5,10,34,26,26,24,10]);
+  const ciRows = S.checkins.map(c => ({
+    Date: c.date, 'Week reviewed': `${c.from} to ${c.to}`, 'Avg weight (kg)': c.avgW ?? '', 'Prev week avg (kg)': c.prevW ?? '',
+    'Trend (kg)': c.trend ?? '', 'Rate (kg/wk)': c.rate != null ? +c.rate.toFixed(2) : '',
+    'Avg eaten': c.kcal ?? '', 'Avg target': c.target, 'Days logged': c.kcalDays, Gym: `${c.gym}/${c.gymPlanned}`, Sport: c.football, 'Run km': c.runKm,
+    'Lifts up': c.lifts.up, 'Lifts same': c.lifts.same, 'Lifts down': c.lifts.down,
+    'Adjustment (kcal)': c.corr, 'New avg target': c.newTarget,
+    Energy: c.feel.energy ?? '', Hunger: c.feel.hunger ?? '', Sleep: c.feel.sleep ?? '', 'Gym feel': c.feel.gymFeel ?? '', Notes: c.notes || ''
+  }));
+  add('Check-ins', ciRows, ['Date','Week reviewed','Avg weight (kg)','Prev week avg (kg)','Trend (kg)','Rate (kg/wk)','Avg eaten','Avg target','Days logged','Gym','Sport','Run km','Lifts up','Lifts same','Lifts down','Adjustment (kcal)','New avg target','Energy','Hunger','Sleep','Gym feel','Notes'],
+      [11,24,15,17,10,12,10,10,11,6,7,7,8,10,10,16,14,7,7,6,9,40]);
+  add('Settings', setRows, ['Key','Setting','Value'], [14,60,12]);
+  // Full data as JSON (split to fit Excel's 32k-char cell limit) so a restore is lossless.
+  const json = JSON.stringify(S), chunks = [];
+  for (let i = 0; i < json.length; i += 30000) chunks.push([json.slice(i, i + 30000)]);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(chunks), '_data');
+  wb.Workbook = { Sheets: wb.SheetNames.map(n => ({ Hidden: n === '_data' ? 1 : 0 })) };
+  return wb;
+}
+
+function restoreWorkbook(wb) {
+  const ds = wb.Sheets['_data'], ls = wb.Sheets['Log'], ss = wb.Sheets['Settings'];
+  if (!ds && !ls) throw new Error('No Log sheet found');
+  const raw = ds ? JSON.parse(XLSX.utils.sheet_to_json(ds, { header: 1 }).map(x => x[0] || '').join('')) : null;
+  if (raw && raw.settings && 'surplus' in raw.settings && !('adjust' in raw.settings)) {   // backup from the old Lean Bulk Tracker
+    Object.assign(raw.settings, { goal: 'bulk', adjust: raw.settings.surplus, units: 'metric', sport: 'Football', onboarded: true });
+    delete raw.settings.surplus;
+  }
+  const r = normalize(raw);
+  if (ls) {   // the visible Log sheet wins, so edits made in Excel come back in
+    const seen = new Set();
+    for (const row of XLSX.utils.sheet_to_json(ls)) {
+      const d = cellDate(row.Date); if (!d) continue;
+      seen.add(d);
+      const l = r.logs[d] || (r.logs[d] = {});
+      Object.assign(l, {
+        weight: +row['Weight (kg)'] || 0, kcal: +row['Calories eaten'] || 0,
+        gym: +row.Gym ? 1 : 0, train: +row.Training ? 1 : 0, match: +row.Match ? 1 : 0, run: +row['Run (km)'] || 0
+      });
+    }
+    for (const d of Object.keys(r.logs)) if (!seen.has(d)) delete r.logs[d];
+  }
+  if (ss) for (const row of XLSX.utils.sheet_to_json(ss))
+    if (row.Key in r.settings && row.Value !== undefined && typeof r.settings[row.Key] !== 'boolean')
+      r.settings[row.Key] = typeof r.settings[row.Key] === 'string' ? (row.Key === 'startDate' ? cellDate(row.Value) : String(row.Value)) : +row.Value;
+  return r;
+}
+
+async function initBackup() {
+  if (!window.XLSX) { xlState = 'nolib'; return renderBackup(); }
+  if (!window.showSaveFilePicker) { xlState = 'unsupported'; return renderBackup(); }
+  try {
+    xlHandle = await idb('readonly', s => s.get('xlsx'));
+    if (!xlHandle) {   // carry over a file linked in the old Lean Bulk Tracker
+      xlHandle = await idb('readonly', s => s.get('xlsx'), 'leanBulkTracker');
+      if (xlHandle) await idb('readwrite', s => s.put(xlHandle, 'xlsx'));
+    }
+  } catch (e) {}
+  if (xlHandle) xlState = (await xlHandle.queryPermission({ mode: 'readwrite' })) === 'granted' ? 'ok' : 'paused';
+  renderBackup();
+}
+function scheduleBackup() {
+  if (xlState !== 'ok') return;
+  clearTimeout(xlTimer);
+  xlTimer = setTimeout(writeBackup, 1200);
+}
+async function writeBackup() {
+  try {
+    const w = await xlHandle.createWritable();
+    await w.write(XLSX.write(buildWorkbook(), { bookType: 'xlsx', type: 'array' }));
+    await w.close();
+    xlLast = new Date(); xlErr = '';
+  } catch (e) {
+    xlErr = e.name === 'NotAllowedError' ? '' : 'Couldn\'t save the Excel file. If it\'s open in Excel, close it and it will save on your next change.';
+    if (e.name === 'NotAllowedError') xlState = 'paused';
+  }
+  renderBackup();
+}
+async function reconnectBackup() {
+  if ((await xlHandle.requestPermission({ mode: 'readwrite' })) === 'granted') { xlState = 'ok'; await writeBackup(); }
+}
+function renderBackup() {
+  const msg = {
+    nolib: '<span class="warn">Excel library missing. Keep the <code>lib</code> folder next to this file.</span>',
+    unsupported: '<span class="warn">Auto-backup needs Chrome or Edge. Use "Download .xlsx now" instead.</span>',
+    none: 'Not linked yet.',
+    ok: `<span class="good">● Auto-saving</span> to <b>${esc(xlHandle ? xlHandle.name : '')}</b>${xlLast ? ` · last saved ${xlLast.toLocaleTimeString()}` : ''}`,
+    paused: '<span class="warn">● Paused.</span> The browser needs your OK again after reopening. Click <b>Reconnect backup</b>.'
+  }[xlState];
+  $('#xlStatus').innerHTML = xlErr ? `<span class="warn">${xlErr}</span>` : msg;
+  $('#xlReconnect').classList.toggle('hidden', xlState !== 'paused');
+  $('#xlLink').classList.toggle('hidden', xlState === 'unsupported' || xlState === 'nolib');
+  $('#xlLink').textContent = xlHandle ? 'Change backup file' : 'Link Excel backup file';
+  $('#banner').classList.toggle('hidden', xlState !== 'paused');
+  $('#banner').innerHTML = xlState === 'paused' ? `Excel backup is paused until you reconnect it. <button class="btn" id="bnReconnect">Reconnect backup</button>` : '';
+}
+
+/* =====================================================================
+   Strava — OAuth + activity sync straight from this page
+   ===================================================================== */
+const REDIRECT = 'http://localhost/strava';
+let SV = (() => { try { return JSON.parse(localStorage.getItem(SKEY)) || {}; } catch (e) { return {}; } })();
+const saveSV = () => { try { localStorage.setItem(SKEY, JSON.stringify(SV)); } catch (e) {} };
+const svMsg = (t, cls = '') => { $('#svMsg').innerHTML = t ? `<span class="${cls}">${t}</span>` : ''; };
+
+async function stravaToken(params) {
+  const r = await fetch('https://www.strava.com/oauth/token', {
+    method: 'POST', body: new URLSearchParams({ client_id: SV.clientId, client_secret: SV.clientSecret, ...params })
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.message === 'Bad Request' ? 'Strava rejected the code. Try connecting again.' : (j.message || 'Strava login failed'));
+  Object.assign(SV, { access: j.access_token, refresh: j.refresh_token, expiresAt: j.expires_at });
+  if (j.athlete) SV.athlete = j.athlete.firstname;
+  saveSV();
+}
+async function stravaGet(path) {
+  if (!SV.expiresAt || SV.expiresAt - 120 < Date.now() / 1000) await stravaToken({ grant_type: 'refresh_token', refresh_token: SV.refresh });
+  const r = await fetch('https://www.strava.com/api/v3' + path, { headers: { Authorization: 'Bearer ' + SV.access } });
+  if (r.status === 429) throw new Error('Strava rate limit hit. Try again in 15 minutes.');
+  if (r.status === 401) throw new Error('Strava access was revoked. Disconnect and connect again.');
+  if (!r.ok) throw new Error('Strava error ' + r.status);
+  return r.json();
+}
+function stravaKind(a, d) {
+  const t = a.type || '', sp = sportName().toLowerCase();
+  if (/Run/.test(t)) return 'run';
+  if (sp) {
+    const typeMatch = SPORT_TYPES[sp] && t === SPORT_TYPES[sp];
+    const nameMatch = a.name && (a.name.toLowerCase().includes(sp) || ((sp === 'football' || sp === 'soccer') && /football|soccer|footy|5.?a.?side/i.test(a.name)));
+    if (typeMatch || nameMatch) return dayIdx(parse(d)) === +S.settings.matchDay || /match|game|\bvs?\b/i.test(a.name || '') ? 'match' : 'train';
+  }
+  if (/WeightTraining|Crossfit|Workout/.test(t)) return 'gym';
+  return null;
+}
+function applyStrava(d) {
+  const l = S.logs[d]; let run = 0, hasRun = false;
+  for (const a of Object.values(l.strava || {})) {
+    const k = stravaKind(a, d);
+    if (k === 'run') { run += a.km; hasRun = true; } else if (k) l[k] = 1;
+  }
+  if (hasRun) l.run = +run.toFixed(2);
+}
+async function stravaSync() {
+  // First sync pulls a year of history (for the dashboard); later syncs only look back a few days.
+  const since = Math.floor(SV.backfilled ? Math.max(SV.lastSync ? SV.lastSync - 3 * 86400 : 0, Date.now() / 1000 - 60 * 86400) : Date.now() / 1000 - 365 * 86400);
+  let all = [];
+  for (let page = 1; ; page++) {
+    const b = await stravaGet(`/athlete/activities?after=${since}&per_page=100&page=${page}`);
+    all = all.concat(b);
+    if (b.length < 100) break;
+  }
+  let details = 0;
+  for (const a of all) {
+    const d = a.start_date_local.slice(0, 10);
+    let kcal = S.acts[a.id] && S.acts[a.id].kcal;
+    // Calories are only on the detailed activity; cap per sync to stay under Strava's rate limit (newest first).
+    if (kcal == null && details < 60 && d >= iso(addDays(new Date(), -120))) { try { kcal = (await stravaGet('/activities/' + a.id)).calories || 0; details++; } catch (e) {} }
+    S.acts[a.id] = { d, type: a.sport_type || a.type, name: a.name, km: +(a.distance / 1000).toFixed(2), min: Math.round(a.moving_time / 60), kcal: kcal == null ? null : Math.round(kcal) };
+  }
+  applyImports();
+  SV.lastSync = Math.floor(Date.now() / 1000); SV.backfilled = true; saveSV();
+  save(); renderAll();
+  return all.length;
+}
+async function runSync(silent) {
+  if (!silent) svMsg('Syncing…');
+  try { const n = await stravaSync(); svMsg(`Synced. ${n} activit${n === 1 ? 'y' : 'ies'} checked.`, 'good'); }
+  catch (e) { svMsg(e.message, 'warn'); }
+}
+function watchAverages() {
+  const b = { gym: [], train: [], match: [], runPerKm: [] };
+  for (const a of Object.values(S.acts)) {
+    if (!(a.kcal > 0)) continue;
+    const k = stravaKind(a, a.d);
+    if (k === 'run') { if (a.km > 0.5) b.runPerKm.push(a.kcal / a.km); }
+    else if (k) b[k].push(a.kcal);
+  }
+  return Object.fromEntries(Object.entries(b).filter(([, v]) => v.length >= 2).map(([k, v]) => [k, Math.round(avg(v))]));
+}
+function renderStrava() {
+  const box = $('#stravaBox'), sp = sportName();
+  if (!SV.clientId || !SV.clientSecret) {
+    box.innerHTML = `<ol class="help steps">
+      <li>Go to <a href="https://www.strava.com/settings/api" target="_blank" rel="noopener">strava.com/settings/api</a> and create an app. Call it anything (e.g. "Recomp"), pick any category, set Website to <code>http://localhost</code> and <b>Authorization Callback Domain</b> to <code>localhost</code>.</li>
+      <li>Paste the <b>Client ID</b> and <b>Client Secret</b> it shows you. They're stored only in this browser, never in backups:</li></ol>
+      <div class="row"><input id="svId" placeholder="Client ID" size="10"><input id="svSecret" placeholder="Client Secret" size="36"><button class="btn primary" id="svSave">Save</button></div>`;
+  } else if (!SV.refresh) {
+    box.innerHTML = `<ol class="help steps" start="3">
+      <li><button class="btn primary" id="svAuth">Connect Strava</button> A Strava tab opens. Click <b>Authorize</b>.</li>
+      <li>The next page will say <i>"This site can't be reached"</i>. <b>That's expected.</b> Copy the full address from that tab's address bar and paste it here:</li></ol>
+      <div class="row"><input id="svUrl" placeholder="http://localhost/strava?state=&code=…" style="flex:1;min-width:220px"><button class="btn primary" id="svFinish">Finish connecting</button><button class="btn" id="svForget">Change app details</button></div>`;
+  } else {
+    const wa = watchAverages(), names = { gym: 'Gym', train: `${cap(sp || 'Sport')} training`, match: 'Match', runPerKm: 'Run per km' };
+    box.innerHTML = `<div class="row"><span class="pill"><span class="good">●</span> Connected${SV.athlete ? ' as ' + esc(SV.athlete) : ''}</span>
+      <span class="help">Last sync: ${SV.lastSync ? new Date(SV.lastSync * 1000).toLocaleString() : 'never'}</span>
+      <button class="btn primary" id="svSync">Sync now</button><button class="btn" id="svDisconnect">Disconnect</button></div>
+      <p class="help">Runs add their distance. ${sp ? `${esc(cap(sp))} counts as training, or as a match if it's on your match day (${DAYS[S.settings.matchDay]}) or its name has "match", "game" or "vs". ` : 'Set a team sport in Settings to count those sessions too. '}Strength workouts count as gym. Syncs automatically when you open the page.</p>
+      ${Object.keys(wa).length ? `<div class="summary"><div>Your watch's average calories: ${Object.entries(wa).filter(([k]) => sp || !['train', 'match'].includes(k)).map(([k, v]) => `${names[k]} <b>${v}</b>`).join(' · ')}<br>
+        <button class="btn" id="svUseWatch" style="margin-top:6px">Use these for planning</button>
+        <span class="help">Watches often read a bit high. Either way, the weight-trend adjustment corrects it over time.</span></div></div>` : ''}`;
+  }
+}
+
+/* =====================================================================
+   Strong CSV import
+   ===================================================================== */
+function parseCSV(text) {
+  text = text.replace(/^﻿/, '');
+  const first = text.split(/\r?\n/, 1)[0];
+  const delim = (first.match(/;/g) || []).length > (first.match(/,/g) || []).length ? ';' : ',';
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i+1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(f); f = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && text[i+1] === '\n') i++; row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+function importStrong(text) {
+  const rows = parseCSV(text), h = (rows.shift() || []).map(x => x.trim().toLowerCase());
+  const col = re => h.findIndex(x => re.test(x));
+  const cDate = col(/^date/), cName = col(/^workout name/), cEx = col(/^exercise name/), cW = col(/^weight/), cR = col(/^reps/),
+        cSet = col(/^set order/), cDur = col(/^duration/);
+  if (cDate < 0 || cEx < 0) throw new Error('That doesn\'t look like a Strong export (no Date / Exercise Name columns).');
+  const num = v => parseFloat(String(v || '').replace(',', '.')) || 0;
+  const dur = v => { v = String(v || ''); const hh = v.match(/(\d+)\s*h/), mm = v.match(/(\d+)\s*m/);
+    return hh || mm ? (hh ? +hh[1] * 60 : 0) + (mm ? +mm[1] : 0) : Math.round(num(v) / 60); };
+  const fresh = {};
+  for (const r of rows) {
+    const d = anyDate(r[cDate] || ''), so = cSet >= 0 ? String(r[cSet] || '').trim() : '1', reps = num(r[cR]);
+    if (!d || !r[cEx] || !(reps > 0) || /rest/i.test(so)) continue;
+    const id = r[cDate].trim();
+    const wk = fresh[id] || (fresh[id] = { id, d, n: (cName >= 0 && r[cName].trim()) || 'Workout', m: 0, s: [] });
+    if (cDur >= 0) { const m = dur(r[cDur]); wk.m = m > 0 && m < 240 ? m : 0; }   // ignore sessions left running for hours
+    wk.s.push([r[cEx], num(r[cW]), reps, so]);
+  }
+  const byId = Object.fromEntries(S.workouts.map(w => [w.id, w]));
+  Object.assign(byId, fresh);
+  S.workouts = Object.values(byId).sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : a.id < b.id ? -1 : 1);
+  const days = applyImports();
+  save(); renderAll();
+  return { days, workouts: Object.keys(fresh).length };
+}
+
+// Strong workouts and Strava activities are stored in full (for the Lifts tab, dashboard and watch averages),
+// but only days from your start date onwards appear in the daily log.
+function applyImports() {
+  const start = startDate(), today = todayIso();
+  for (const [d, l] of Object.entries(S.logs)) if (d < start) {
+    for (const [id, a] of Object.entries(l.strava || {})) S.acts[id] ||= { ...a, d };
+    if (+l.weight > 0 || +l.kcal > 0) { delete l.strava; delete l.strong; } else delete S.logs[d];   // keep anything you typed
+  }
+  const days = {};
+  for (const wk of S.workouts) {
+    if (wk.d < start || wk.d > today) continue;
+    const o = days[wk.d] || (days[wk.d] = { names: [], sets: 0, volume: 0, ex: new Set() });
+    o.names.push(wk.n);
+    for (const [e, w, r] of wk.s) { o.sets++; o.volume += w * r; o.ex.add(e); }
+  }
+  for (const [d, o] of Object.entries(days)) {
+    const l = logFor(d);
+    l.gym = 1;
+    l.strong = { name: o.names.join(' + '), sets: o.sets, volume: Math.round(o.volume), exercises: o.ex.size };
+  }
+  for (const [id, a] of Object.entries(S.acts)) {
+    if (a.d < start || a.d > today) continue;
+    (logFor(a.d).strava ||= {})[id] = { type: a.type, name: a.name, km: a.km, min: a.min, kcal: a.kcal };
+  }
+  for (const d of Object.keys(S.logs)) if (S.logs[d].strava) applyStrava(d);
+  return Object.keys(days).length;
+}
+
+/* ---------- events ---------- */
+const TABS = ['plan','checkin','log','dash','split','sync','settings'];
+function showTab(t) {
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  TABS.forEach(n => $('#t-'+n).classList.toggle('hidden', n !== t));
+  if (t === 'dash') renderDashboard();
+  window.scrollTo({ top: 0 });
+}
+$('#tabs').addEventListener('click', e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
+// Scrolling the page over a focused number box would silently change its value.
+document.addEventListener('wheel', e => { if (e.target.type === 'number' && e.target === document.activeElement) e.target.blur(); }, { passive: true });
+document.addEventListener('click', e => {
+  const g = e.target.closest('[data-go]'); if (g) showTab(g.dataset.go);
+  if (e.target.id === 'leaveDemo' && confirm('Clear the demo data and set up your own?')) {
+    S = defaults(); save(); openOnboarding(); renderSettings(); renderAll();
+  }
+});
+
+// Onboarding
+$('#onboard').addEventListener('input', e => {
+  const t = e.target, k = t.dataset.ob;
+  if (t.dataset.d != null) {
+    const a = OB.days[t.dataset.d];
+    if (t.dataset.f === 'run') a.run = +((+t.value || 0) * (OB.units === 'imperial' ? MI : 1)).toFixed(2); else a[t.dataset.f] = t.checked ? 1 : 0;
+    return;
+  }
+  if (!k) return;
+  const im = OB.units === 'imperial';
+  if (k === 'hcm') OB.heightCm = +t.value;
+  else if (k === 'hft' || k === 'hin') { const ft = +$('[data-ob=hft]').value || 0, inch = +$('[data-ob=hin]').value || 0; OB.heightCm = (ft * 12 + inch) * 2.54; }
+  else if (k === 'weight') OB.weight = im ? +t.value / LB : +t.value;
+  else if (k === 'maint') OB.maint = t.checked;
+  else OB[k] = t.value;
+  if (['units', 'goal', 'sport'].includes(k)) {
+    if (k === 'goal') OB.adjust = GOAL_DEFAULT[t.value] === 0 ? 0 : paceOptions(t.value)[0][0];
+    if (k === 'sport') { clearTimeout(OB.t); OB.t = setTimeout(() => { const pos = t.selectionStart; renderOnboarding(); const n = $('[data-ob=sport]'); n.focus(); n.setSelectionRange(pos, pos); }, 400); return; }
+    renderOnboarding();
+  }
+});
+$('#onboard').addEventListener('click', e => {
+  if (e.target.id === 'obStart') finishOnboarding();
+  if (e.target.id === 'obCancel') $('#onboard').classList.add('hidden');
+  if (e.target.id === 'obDemo' && (!Object.keys(S.logs).length || confirm('Replace everything on this page with demo data?'))) loadDemo();
+});
+$('#rerunSetup').onclick = openOnboarding;
+
+// Check-in
+$('#ciBody').addEventListener('click', async e => {
+  if (e.target.id === 'ciDone') { completeCheckin(); window.scrollTo({ top: 0 }); }
+  if (e.target.id === 'ciRedo' && confirm('Redo this week\'s check-in? The previous calorie lock comes back until you complete it again.')) {
+    S.checkins = S.checkins.filter(c => c !== checkinDone()); save(); renderAll();
+  }
+  if (e.target.id === 'ciSync') { e.target.textContent = 'Syncing…'; await runSync(); }
+});
+$('#wkPrev').onclick = () => { weekOffset--; renderPlan(); };
+$('#wkNext').onclick = () => { weekOffset++; renderPlan(); };
+$('#wkReset').onclick = () => { delete S.plans[weekKey()]; save(); renderAll(); };
+$('#wkDefault').onclick = () => { S.template = weekPlan(weekKey()).map(a => ({...a})); save(); renderAll(); alert('Saved as your default week.'); };
+$('#week').addEventListener('click', e => {
+  const b = e.target.closest('.chip'); if (!b) return;
+  const p = weekPlan(weekKey(), true), a = p[b.dataset.i];
+  a[b.dataset.f] = a[b.dataset.f] ? 0 : 1;
+  save(); renderAll();
+});
+$('#week').addEventListener('change', e => {
+  if (!e.target.hasAttribute('data-run')) return;
+  weekPlan(weekKey(), true)[e.target.dataset.i].run = +dIn(+e.target.value || 0).toFixed(2);
+  save(); renderAll();
+});
+
+$('#lDate').addEventListener('change', e => fillLogForm(e.target.value));
+['#lGym','#lTrain','#lMatch','#lRun'].forEach(id => $(id).addEventListener('change', () => {
+  const l = S.logs[$('#lDate').value];
+  if (!l || !l.kcal) $('#lKcal').value = targetFor(formActs(), undefined, $('#lDate').value); // keep target in sync until calories are saved
+}));
+$('#logForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const d = $('#lDate').value; if (!d) return;
+  const wv = +$('#lWeight').value;
+  Object.assign(logFor(d), { weight: wv ? +wIn(wv).toFixed(3) : 0, kcal: +$('#lKcal').value || 0, ...formActs() });
+  save(); renderAll();
+  fillLogForm(d);
+});
+$('#logTable').addEventListener('click', e => {
+  const del = e.target.dataset.del, ed = e.target.dataset.edit;
+  if (del && confirm(`Delete ${del}?`)) { delete S.logs[del]; save(); renderAll(); fillLogForm($('#lDate').value); }
+  if (ed) { fillLogForm(ed); window.scrollTo({ top: $('#logForm').offsetTop - 20, behavior: 'smooth' }); }
+});
+
+// Dashboard
+$('#dashRange').addEventListener('click', e => { if (e.target.dataset.w == null) return; dashWeeks = +e.target.dataset.w; renderDashboard(); });
+$('#exPick').addEventListener('change', e => { dashEx = e.target.value; renderDashboard(); });
+let rsz; window.addEventListener('resize', () => { clearTimeout(rsz); rsz = setTimeout(renderDashboard, 150); });
+
+// Settings
+$('#settingsForm').addEventListener('change', e => {
+  const t = e.target, k = t.dataset.s;
+  if (t.dataset.h) {
+    const ft = $('[data-h=ft]'), inch = $('[data-h=in]'), cm = $('[data-h=cm]');
+    S.settings.heightCm = cm ? +cm.value || S.settings.heightCm : Math.round(((+ft.value || 0) * 12 + (+inch.value || 0)) * 2.54);
+  } else if (k) {
+    const typ = t.dataset.t, v = t.value;
+    S.settings[k] = typ === 'date' || typ === 'text' ? v.trim()
+      : typ === 'opt' ? (typeof defaults().settings[k] === 'string' ? v : +v)
+      : typ === 'w' ? +wIn(+v).toFixed(2)
+      : typ === 'perW' ? +((+v) * (imp() ? LB : 1)).toFixed(2)
+      : typ === 'perD' ? Math.round((+v) / (imp() ? MI : 1))
+      : (+v || 0);
+    if (k === 'goal' && Math.sign(S.settings.adjust) !== Math.sign(GOAL_DEFAULT[v])) S.settings.adjust = GOAL_DEFAULT[v];
+    if (k === 'startDate' && v) applyImports();
+    if (k === 'sport') applyImports();
+  }
+  save(); renderSettings(); renderAll();
+});
+$('#resetAll').onclick = () => {
+  if (!confirm('Wipe ALL logs and settings? Make sure your Excel backup is up to date first.')) return;
+  S = defaults(); save(); renderSettings(); renderAll(); openOnboarding();
+};
+
+// Lifts
+$('#splitBox').addEventListener('click', e => {
+  const ex = e.target.dataset.inc; if (!ex) return;
+  const v = prompt(`Weight step for ${ex}. Leave blank for the automatic one.`, S.incr[ex] || '');
+  if (v === null) return;
+  if (+v > 0) S.incr[ex] = +v; else delete S.incr[ex];
+  save(); renderSplit();
+});
+$('#splitTemplate').onclick = () => {
+  const names = Object.fromEntries(currentSplit().map(w => [dayIdx(parse(w.d)), w.n]));
+  const apply = (a, i) => { const r = { ...a, gym: names[i] ? 1 : 0 }; if (names[i]) r.w = names[i]; else delete r.w; return r; };
+  S.template = S.template.map(apply);
+  // also update this week and any planned future weeks, keeping their sport/run choices
+  for (const [k, p] of Object.entries(S.plans)) if (k >= weekKey(0)) S.plans[k] = p.map(apply);
+  save(); renderAll();
+  alert('Done. Your week plan now uses ' + Object.entries(names).map(([i, n]) => `${DAYS[i]} ${n}`).join(', ') + '.');
+};
+
+// Excel
+function replaceData(r, what) { S = r; save(); renderSettings(); renderAll(); fillLogForm(todayIso()); alert(`${what} restored.`); }
+$('#xlLink').onclick = async () => {
+  try {
+    const h = await window.showSaveFilePicker({ suggestedName: 'recomp-backup.xlsx',
+      types: [{ description: 'Excel workbook', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }] });
+    xlHandle = h; xlState = 'ok';
+    try { await idb('readwrite', s => s.put(h, 'xlsx')); } catch (e) {}
+    await writeBackup();
+  } catch (e) { if (e.name !== 'AbortError') alert(e.message); }
+};
+$('#xlReconnect').onclick = reconnectBackup;
+$('#banner').addEventListener('click', e => { if (e.target.id === 'bnReconnect') reconnectBackup(); });
+$('#xlDownload').onclick = () => {
+  if (!window.XLSX) return alert('Excel library missing. Keep the lib folder next to this file.');
+  XLSX.writeFile(buildWorkbook(), `recomp-${todayIso()}.xlsx`);
+};
+$('#xlImport').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const r = restoreWorkbook(XLSX.read(await f.arrayBuffer()));
+    if (confirm(`Replace the data on this page with ${Object.keys(r.logs).length} days from "${f.name}"?`)) replaceData(r, 'Excel backup');
+  } catch (err) { alert('Couldn\'t read that file: ' + err.message); }
+});
+
+// JSON
+$('#exportBtn').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(S, null, 2)], { type: 'application/json' }));
+  a.download = `recomp-backup-${todayIso()}.json`; a.click();
+};
+$('#importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const r = JSON.parse(await f.text());
+    if (!r.settings || !r.logs) throw 0;
+    if ('surplus' in r.settings && !('adjust' in r.settings)) { Object.assign(r.settings, { goal: 'bulk', adjust: r.settings.surplus, units: 'metric', sport: 'Football', onboarded: true }); delete r.settings.surplus; }
+    replaceData(normalize(r), 'Backup');
+  } catch { alert('That file doesn\'t look like a Recomp backup.'); }
+});
+
+// Strong
+$('#strongFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const n = importStrong(await f.text());
+    $('#strongMsg').innerHTML = `<span class="good">Imported ${n.workouts} workouts. ${n.days} gym day${n.days === 1 ? '' : 's'} since your start date ticked in your log. See the <b>Lifts</b> tab and dashboard.</span>`;
+  }
+  catch (err) { $('#strongMsg').innerHTML = `<span class="warn">${esc(err.message)}</span>`; }
+});
+
+// Strava
+$('#stravaBox').addEventListener('click', async e => {
+  const id = e.target.id;
+  if (id === 'svSave') {
+    SV.clientId = $('#svId').value.trim(); SV.clientSecret = $('#svSecret').value.trim();
+    if (!SV.clientId || !SV.clientSecret) return svMsg('Fill in both boxes.', 'warn');
+    saveSV(); svMsg(''); renderStrava();
+  }
+  if (id === 'svAuth') {
+    window.open(`https://www.strava.com/oauth/authorize?client_id=${encodeURIComponent(SV.clientId)}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT)}&approval_prompt=auto&scope=read,activity:read_all`, '_blank');
+  }
+  if (id === 'svFinish') {
+    let u; try { u = new URL($('#svUrl').value.trim()); } catch { return svMsg('That isn\'t a full web address. Copy the whole thing from the address bar.', 'warn'); }
+    if (u.searchParams.get('error')) return svMsg('Strava says access was denied. Try again and click Authorize.', 'warn');
+    const code = u.searchParams.get('code'), scope = u.searchParams.get('scope') || '';
+    if (!code) return svMsg('No code found in that address.', 'warn');
+    if (!/activity:read/.test(scope)) return svMsg('Please leave the "View data about your activities" box ticked on Strava, then try again.', 'warn');
+    e.target.disabled = true; svMsg('Connecting…');
+    try { await stravaToken({ grant_type: 'authorization_code', code }); renderStrava(); await runSync(); }
+    catch (err) { svMsg(err.message, 'warn'); e.target.disabled = false; }
+  }
+  if (id === 'svForget') { SV = {}; saveSV(); renderStrava(); }
+  if (id === 'svSync') { e.target.disabled = true; await runSync(); }
+  if (id === 'svDisconnect' && confirm('Disconnect Strava? Activities already imported stay in your log.')) {
+    SV = { clientId: SV.clientId, clientSecret: SV.clientSecret }; saveSV(); svMsg(''); renderStrava();
+  }
+  if (id === 'svUseWatch') {
+    Object.assign(S.settings, watchAverages()); save(); renderSettings(); renderAll();
+    svMsg('Planning now uses your watch\'s calorie averages. Adjust them any time in Settings.', 'good');
+  }
+});
+
+if (S.settings.onboarded) { applyImports(); save(); }   // tidy: nothing from before the start date in the log
+renderSettings();
+renderAll();
+fillLogForm(todayIso());
+initBackup();
+if (!S.settings.onboarded) openOnboarding();
+if (SV.refresh && (!SV.lastSync || Date.now() / 1000 - SV.lastSync > 3 * 3600)) runSync(true);
+</script>
+</body>
+</html>
