@@ -20,6 +20,8 @@ It's a single HTML file with no account and no server. Your data stays in your b
 - **Excel backup.** Link a `.xlsx` file once and every change auto-saves to it, with Log, Weekly, Next session and Check-ins sheets. Edits you make in Excel can be restored back in.
 - **Metric or imperial**, any team sport (or none), and dark mode.
 
+Screenshots use the built-in demo data.
+
 | Week plan | Weekly check-in |
 |---|---|
 | ![Week plan](docs/week-plan.png) | ![Check-in](docs/check-in.png) |
