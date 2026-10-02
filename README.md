@@ -15,7 +15,7 @@ It's a single HTML file with no account and no server. Your data stays in your b
 - **Learns your maintenance.** After about 2 weeks of weigh-ins and calorie entries, Recomp compares what you ate with what the scale did and corrects the formula for you.
 - **Weekly check-in.** Review the week (weight, eating, training, lifts), get a verdict against your goal, then lock in next week's calories so they don't drift mid-week.
 - **Dashboard.** Weight and calorie trends, a strength index against your all-time bests, e1RM per exercise, sets per muscle group, recent PRs, running distance and pace, team-sport sessions, and plain-English insights.
-- **Lifts from Strong.** Import your Strong CSV to see your split, next-session targets (set-by-set double progression) and how close you are to your best on every exercise.
+- **Lifts from Hevy or Strong.** Hevy syncs automatically through its API, and Strong works via CSV import. Either way you see your split, next-session targets (set-by-set double progression) and how close you are to your best on every exercise. Hevy weigh-ins can come in too.
 - **Runs and sport from Strava.** Anything on Strava (Apple Watch, Garmin, Coros…) is pulled in automatically, including watch calorie averages you can use for planning.
 - **Excel backup.** Link a `.xlsx` file once and every change auto-saves to it, with Log, Weekly, Next session and Check-ins sheets. Edits you make in Excel can be restored back in.
 - **Metric or imperial**, any team sport (or none), and dark mode.
@@ -61,13 +61,24 @@ Strava only lets you connect through an API app of your own, so there are no sha
 
 The first sync pulls a year of activities. After that it syncs whenever you open the page. Your Strava keys are stored in your browser only and are never written to backups.
 
+## Connecting Hevy (optional)
+
+Needs **Hevy Pro**, which is what gives access to Hevy's API.
+
+1. Get your API key at [hevy.com/settings?developer](https://hevy.com/settings?developer).
+2. In Recomp, go to **Sync & backup → Hevy**, paste the key and click **Connect Hevy**.
+
+The first sync pulls your whole workout history. After that, Recomp only fetches what changed (new, edited or deleted workouts) whenever you open the page. You can also tick **Also import weigh-ins** to bring in body weight logged in Hevy. It only fills days that don't have a weigh-in yet.
+
+Moving from Strong? Hevy uses the same exercise names, so your Strong history and Hevy sessions line up. If you imported your Strong history into Hevy, Recomp spots the duplicates and keeps the Hevy copy. Your API key is stored in your browser only and never written to backups.
+
 ## Importing Strong (optional)
 
 In the Strong app, go to **Profile → Settings → Export Strong Data**, get the CSV onto your computer, then go to **Sync & backup → Import Strong CSV**. Re-importing only adds new workouts, so it never creates duplicates.
 
 ## Privacy
 
-Everything stays on your device: browser `localStorage`, plus any Excel or JSON backup you save. The only network calls are to Strava, and only if you connect it.
+Everything stays on your device: browser `localStorage`, plus any Excel or JSON backup you save. The only network calls are to Strava and Hevy, and only if you connect them.
 
 ## Built with
 

@@ -272,7 +272,12 @@ button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;
     <div id="stravaBox"></div>
     <div class="status" id="svMsg"></div>
 
-    <h2>Strong (gym sessions)</h2>
+    <h2>Hevy (gym sessions)</h2>
+    <p class="help">Hevy Pro has an official API, so your workouts sync automatically. Get your API key at <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener">hevy.com/settings?developer</a> and paste it below. It's stored only in this browser and never written to backups.</p>
+    <div id="hevyBox"></div>
+    <div class="status" id="hvMsg"></div>
+
+    <h2>Strong (CSV import)</h2>
     <p class="help">Strong can export your workouts: <b>Strong → Profile → ⚙ Settings → Export Strong Data</b>. Get the CSV onto this computer and import it. Your full history feeds the <b>Lifts</b> tab and dashboard. Only sessions from your start date onwards get ticked in the daily log. Re-importing only updates, never duplicates.</p>
     <label class="btn">Import Strong CSV<input type="file" id="strongFile" accept=".csv,text/csv" hidden></label>
     <div class="status" id="strongMsg"></div>
@@ -576,7 +581,7 @@ function renderLog() {
   if (!keys.length) { $('#logTable').innerHTML = '<tr><td class="empty">Nothing logged yet. Start with today\'s weigh-in.</td></tr>'; return; }
   const src = l => {
     const out = [];
-    if (l.strong) out.push(`Strong: ${esc(l.strong.name)} · ${l.strong.sets} sets`);
+    if (l.strong) out.push(`${l.strong.src === 'hevy' ? 'Hevy' : 'Strong'}: ${esc(l.strong.name)} · ${l.strong.sets} sets`);
     for (const a of Object.values(l.strava || {})) out.push(`Strava: ${esc(a.name)}${a.km ? ` · ${fd(a.km)} ${du()}` : ''} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal (watch)` : ''}`);
     return out.map(s => `<span class="src">${s}</span>`).join('');
   };
@@ -762,7 +767,7 @@ function renderSplit() {
   $('#repRange').textContent = `${S.settings.repLow}–${S.settings.repHigh} reps`;
   const rows = splitRows();
   $('#splitTemplate').classList.toggle('hidden', !rows.length);
-  if (!rows.length) { $('#splitBox').innerHTML = '<p class="empty">Import your Strong CSV in <b>Sync &amp; backup</b> and your split shows up here.</p>'; return; }
+  if (!rows.length) { $('#splitBox').innerHTML = '<p class="empty">Connect Hevy or import a Strong CSV in <b>Sync &amp; backup</b> and your split shows up here.</p>'; return; }
   $('#splitBox').innerHTML = rows.map(({ wk, exercises }) => `<div class="wk">
     <h3>${DAYS[dayIdx(parse(wk.d))]} · ${esc(wk.n)} <span class="date">last done ${fmtShort(wk.d)}${wk.m ? ` · ${wk.m} min` : ''}</span></h3>
     <table><tr><th>Exercise</th><th>Last time</th><th>Next time</th><th>vs your best</th></tr>
@@ -877,13 +882,14 @@ function renderCheckin() {
         <div>Weight<br><b>${R.avgW != null ? fw(R.avgW) + ' ' + wu() : '—'}</b> avg<span class="src">${R.weighIns} weigh-in${R.weighIns === 1 ? '' : 's'}${R.avgW != null && R.prevW != null ? ` · ${sgn(fw(R.avgW - R.prevW, 2))} ${wu()} vs week before` : ''}</span></div>
         <div>Eating<br><b>${R.kcal != null ? R.kcal : '—'}</b> kcal avg<span class="src">target avg ${R.target} · ${R.kcalDays}/7 days logged</span></div>
         <div>Training<br><b>${R.gym}/${R.gymPlanned}</b> gym<span class="src">${sp ? `${R.football} ${esc(sp.toLowerCase())} · ` : ''}${fd(R.runKm)} ${du()} run</span></div>
-        <div>Lifts<br><b>${lt ? `${L.up} up` : '—'}</b>${lt ? ` · ${L.same} same · ${L.down} down` : ''}<span class="src">${lt ? 'vs the previous time you did each exercise' : 'Import Strong to see this'}</span></div>
+        <div>Lifts<br><b>${lt ? `${L.up} up` : '—'}</b>${lt ? ` · ${L.same} same · ${L.down} down` : ''}<span class="src">${lt ? 'vs the previous time you did each exercise' : 'Connect Hevy or import Strong to see this'}</span></div>
       </div>
       <div class="verdict"><b>${vt}</b><br>${vd}</div>
       <h2>Before you lock it in</h2>
       <ul class="checklist">
         <li>${tick(R.weighIns >= 4)} Weigh-ins last week: ${R.weighIns}/7 <button class="link" data-go="log">Daily log</button></li>
-        ${S.workouts.length ? `<li>${tick(lastStrong && dayNum(lastStrong) >= dayNum(R.to) - 3)} Strong data: latest workout ${lastStrong ? fmtShort(lastStrong) : 'none'}. Export from Strong and <button class="link" data-go="sync">import it</button> if you've trained since.</li>` : ''}
+        ${HV.key ? `<li>${tick(HV.lastSync && Date.now() - HV.lastSync < 864e5)} Hevy: last synced ${HV.lastSync ? new Date(HV.lastSync).toLocaleString() : 'never'} <button class="link" id="ciHevy">Sync now</button></li>`
+          : S.workouts.length ? `<li>${tick(lastStrong && dayNum(lastStrong) >= dayNum(R.to) - 3)} Strong data: latest workout ${lastStrong ? fmtShort(lastStrong) : 'none'}. Export from Strong and <button class="link" data-go="sync">import it</button> if you've trained since.</li>` : ''}
         ${SV.refresh ? `<li>${tick(SV.lastSync && Date.now() / 1000 - SV.lastSync < 86400)} Strava: last synced ${SV.lastSync ? new Date(SV.lastSync * 1000).toLocaleString() : 'never'} <button class="link" id="ciSync">Sync now</button></li>` : ''}
         <li>${tick(true)} Anything different this week${sp ? ` (no ${esc(sp.toLowerCase())}, extra runs)` : ''}? Change it in the <button class="link" data-go="plan">Week plan</button>. Targets below update.</li>
       </ul>
@@ -1080,7 +1086,7 @@ function renderDashboard() {
 
   // lifts
   const ss = strengthSeries(from);
-  lineChart($('#cStrength'), { label: 'Strength index', height: 200, empty: 'Import Strong workouts to see this.',
+  lineChart($('#cStrength'), { label: 'Strength index', height: 200, empty: 'Connect Hevy or import Strong to see this.',
     series: [{ type: 'line', pts: ss }], ref: 100, refLabel: 'your best', yFmt: v => Math.round(v) + '%',
     tip: x => { const p = ss.find(q => q.x === x); return `<b>Week of ${fmtShort(fromNum(x))}</b><br>${p.y.toFixed(1)}% of best<br>${p.n} exercise session${p.n > 1 ? 's' : ''}`; } });
   const exList = [...new Set(splitRows().flatMap(r => r.exercises.map(e => e.ex)))];
@@ -1095,7 +1101,7 @@ function renderDashboard() {
   const ms = muscleSets(), mx = Math.max(24, ...ms.map(([, n]) => n));
   $('#cMuscles').innerHTML = ms.length ? ms.map(([mg, n]) => `<div class="hb" title="${mg}: ${n.toFixed(1)} sets/week"><span>${mg}</span>
       <span class="track"><span class="band" style="left:${10 / mx * 100}%;width:${10 / mx * 100}%"></span><span class="bar" style="width:${Math.min(100, n / mx * 100)}%"></span></span>
-      <span class="n">${n.toFixed(1)}</span></div>`).join('') : '<p class="empty">Import Strong workouts to see this.</p>';
+      <span class="n">${n.toFixed(1)}</span></div>`).join('') : '<p class="empty">Connect Hevy or import Strong to see this.</p>';
   const prs = prList(from);
   $('#cPRs').innerHTML = prs.length ? prs.map(p => `<li><span><b>${esc(p.ex)}</b><span class="src">${fmtW(p.w)}×${p.r} · e1RM ${Math.round(p.v)} (was ${Math.round(p.prev)})</span></span><span>${fmtShort(p.d)}</span></li>`).join('')
     : '<li class="empty" style="display:block">No new bests in this range yet.</li>';
@@ -1191,7 +1197,7 @@ function renderAll() {
   document.querySelectorAll('.du').forEach(e => e.textContent = du());
   $('#demoBanner').classList.toggle('hidden', !S.demo);
   $('#demoBanner').innerHTML = S.demo ? `👀 <b>You're looking at demo data.</b> Have a click around. <button class="btn primary" id="leaveDemo">Start with my own data</button>` : '';
-  renderStats(); renderPlan(); renderLog(); renderStrava(); renderSplit(); renderCheckin(); renderDashboard();
+  renderStats(); renderPlan(); renderLog(); renderStrava(); renderHevy(); renderSplit(); renderCheckin(); renderDashboard();
 }
 
 /* =====================================================================
@@ -1586,6 +1592,98 @@ function renderStrava() {
 }
 
 /* =====================================================================
+   Hevy — official API (Hevy Pro): workouts, plus optional weigh-ins
+   ===================================================================== */
+const HKEY = 'recomp.hevy';                  // kept separate so the API key never ends up in backups
+let HV = (() => { try { return JSON.parse(localStorage.getItem(HKEY)) || {}; } catch (e) { return {}; } })();
+const saveHV = () => { try { localStorage.setItem(HKEY, JSON.stringify(HV)); } catch (e) {} };
+const hvMsg = (t, cls = '') => { $('#hvMsg').innerHTML = t ? `<span class="${cls}">${t}</span>` : ''; };
+const SET_CODE = { warmup: 'W', dropset: 'D', failure: 'F' };
+
+async function hevyGet(path, key = HV.key) {
+  const r = await fetch('https://api.hevyapp.com/v1' + path, { headers: { 'api-key': key, accept: 'application/json' } });
+  if (r.status === 401) throw new Error('Hevy rejected the API key. Check it at hevy.com/settings?developer (needs Hevy Pro).');
+  if (r.status === 429) throw new Error('Hevy rate limit hit. Try again in a few minutes.');
+  if (!r.ok) throw new Error('Hevy error ' + r.status);
+  return r.json();
+}
+async function hevyPages(path, field) {      // the API caps pageSize at 10
+  let out = [], page = 1, count = 1;
+  do {
+    const j = await hevyGet(`${path}${path.includes('?') ? '&' : '?'}page=${page}&pageSize=10`);
+    out = out.concat(j[field] || []);
+    count = j.page_count || 1;
+  } while (++page <= count && page <= 500);
+  return out;
+}
+// Same shape as a Strong session, so the Lifts tab, dashboard and log treat both alike.
+function hevyToWorkout(w) {
+  const st = new Date(w.start_time), mins = Math.round((new Date(w.end_time) - st) / 6e4), s = [];
+  for (const ex of [...(w.exercises || [])].sort((a, b) => a.index - b.index)) {
+    let n = 0;
+    for (const set of [...(ex.sets || [])].sort((a, b) => a.index - b.index)) {
+      if (!(set.reps > 0)) continue;           // timed / distance-only sets
+      const kg = set.weight_kg || 0;
+      s.push([ex.title, +(imp() ? kg * LB : kg).toFixed(2), set.reps, SET_CODE[set.type] || String(++n)]);
+    }
+  }
+  return { id: 'hevy:' + w.id, src: 'hevy', d: iso(st), start: st.getTime(), n: (w.title || 'Workout').trim(), m: mins > 0 && mins < 240 ? mins : 0, s };
+}
+const byDate = (a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : a.id < b.id ? -1 : 1;
+// Hevy can import Strong history; if a Strong session matches a Hevy one (same day + same name or start time), keep Hevy's.
+function dropStrongDuplicates() {
+  const hevy = S.workouts.filter(w => w.src === 'hevy');
+  const strongStart = w => { const m = w.id.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
+  const before = S.workouts.length;
+  S.workouts = S.workouts.filter(w => w.src === 'hevy' || !hevy.some(h => h.d === w.d &&
+    (h.n.toLowerCase() === w.n.toLowerCase() || (strongStart(w) && Math.abs(strongStart(w) - h.start) < 20 * 6e4))));
+  return before - S.workouts.length;
+}
+async function hevySync() {
+  const byId = Object.fromEntries(S.workouts.map(w => [w.id, w]));
+  let changed = 0, removed = 0, weighIns = 0;
+  if (!HV.lastSync) {                          // first sync: full history
+    for (const w of await hevyPages('/workouts', 'workouts')) { byId['hevy:' + w.id] = hevyToWorkout(w); changed++; }
+  } else {                                     // afterwards: only what changed (edits and deletions too)
+    const since = new Date(HV.lastSync - 10 * 6e4).toISOString();
+    for (const ev of await hevyPages(`/workouts/events?since=${encodeURIComponent(since)}`, 'events')) {
+      if (ev.type === 'updated' && ev.workout) { byId['hevy:' + ev.workout.id] = hevyToWorkout(ev.workout); changed++; }
+      else if (ev.type === 'deleted' && byId['hevy:' + ev.id]) { delete byId['hevy:' + ev.id]; removed++; }
+    }
+  }
+  S.workouts = Object.values(byId).sort(byDate);
+  const dupes = dropStrongDuplicates();
+  if (HV.weights) for (const b of await hevyPages('/body_measurements', 'body_measurements')) {
+    const d = anyDate(String(b.date || ''));
+    if (!d || !(b.weight_kg > 0) || d < startDate() || d > todayIso() || (S.logs[d] && +S.logs[d].weight > 0)) continue;   // never overwrite a weigh-in
+    logFor(d).weight = +b.weight_kg.toFixed(2); weighIns++;
+  }
+  HV.lastSync = Date.now(); saveHV();
+  applyImports(); save(); renderAll();
+  return { changed, removed, dupes, weighIns };
+}
+async function runHevySync(silent) {
+  if (!silent) hvMsg('Syncing…');
+  try {
+    const r = await hevySync(), pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+    hvMsg(`Synced: ${pl(r.changed, 'workout')} added or updated${r.removed ? `, ${r.removed} removed` : ''}${r.dupes ? `, ${pl(r.dupes, 'duplicate Strong session')} replaced by Hevy's copy` : ''}${HV.weights ? `, ${pl(r.weighIns, 'weigh-in')} added` : ''}.`, 'good');
+  } catch (e) { hvMsg(esc(e.message), 'warn'); }
+}
+function renderHevy() {
+  const box = $('#hevyBox');
+  if (!HV.key) {
+    box.innerHTML = `<div class="row"><input id="hvKey" type="password" placeholder="Hevy API key" size="40" autocomplete="off"><button class="btn primary" id="hvConnect">Connect Hevy</button></div>`;
+    return;
+  }
+  const n = S.workouts.filter(w => w.src === 'hevy').length;
+  box.innerHTML = `<div class="row"><span class="pill"><span class="good">●</span> Connected${HV.name ? ' as ' + esc(HV.name) : ''}</span>
+      <span class="help">${n} workout${n === 1 ? '' : 's'} · last sync: ${HV.lastSync ? new Date(HV.lastSync).toLocaleString() : 'never'}</span>
+      <button class="btn primary" id="hvSync">Sync now</button><button class="btn" id="hvDisconnect">Disconnect</button></div>
+    <label class="checks" style="margin-top:8px"><input type="checkbox" id="hvWeights" ${HV.weights ? 'checked' : ''}> Also import weigh-ins logged in Hevy (only fills days that have no weight yet)</label>
+    <p class="help">Hevy workouts feed the <b>Lifts</b> tab, the dashboard and the gym ticks in your daily log, the same way Strong does. Exercise names match Strong's, so your old Strong history and new Hevy sessions join up. If you imported your Strong history into Hevy, the duplicates are swapped for the Hevy copies automatically. Syncs each time you open the page.</p>`;
+}
+
+/* =====================================================================
    Strong CSV import
    ===================================================================== */
 function parseCSV(text) {
@@ -1618,13 +1716,14 @@ function importStrong(text) {
     const d = anyDate(r[cDate] || ''), so = cSet >= 0 ? String(r[cSet] || '').trim() : '1', reps = num(r[cR]);
     if (!d || !r[cEx] || !(reps > 0) || /rest/i.test(so)) continue;
     const id = r[cDate].trim();
-    const wk = fresh[id] || (fresh[id] = { id, d, n: (cName >= 0 && r[cName].trim()) || 'Workout', m: 0, s: [] });
+    const wk = fresh[id] || (fresh[id] = { id, src: 'strong', d, n: (cName >= 0 && r[cName].trim()) || 'Workout', m: 0, s: [] });
     if (cDur >= 0) { const m = dur(r[cDur]); wk.m = m > 0 && m < 240 ? m : 0; }   // ignore sessions left running for hours
     wk.s.push([r[cEx], num(r[cW]), reps, so]);
   }
   const byId = Object.fromEntries(S.workouts.map(w => [w.id, w]));
   Object.assign(byId, fresh);
-  S.workouts = Object.values(byId).sort((a, b) => a.d < b.d ? -1 : a.d > b.d ? 1 : a.id < b.id ? -1 : 1);
+  S.workouts = Object.values(byId).sort(byDate);
+  dropStrongDuplicates();   // sessions already synced from Hevy win
   const days = applyImports();
   save(); renderAll();
   return { days, workouts: Object.keys(fresh).length };
@@ -1641,14 +1740,17 @@ function applyImports() {
   const days = {};
   for (const wk of S.workouts) {
     if (wk.d < start || wk.d > today) continue;
-    const o = days[wk.d] || (days[wk.d] = { names: [], sets: 0, volume: 0, ex: new Set() });
+    const o = days[wk.d] || (days[wk.d] = { names: [], sets: 0, volume: 0, ex: new Set(), src: 'strong' });
     o.names.push(wk.n);
+    if (wk.src === 'hevy') o.src = 'hevy';
     for (const [e, w, r] of wk.s) { o.sets++; o.volume += w * r; o.ex.add(e); }
   }
+  // A session that was deleted (e.g. in Hevy) takes its imported gym tick with it.
+  for (const [d, l] of Object.entries(S.logs)) if (d >= start && l.strong && !days[d]) { delete l.strong; l.gym = 0; }
   for (const [d, o] of Object.entries(days)) {
     const l = logFor(d);
     l.gym = 1;
-    l.strong = { name: o.names.join(' + '), sets: o.sets, volume: Math.round(o.volume), exercises: o.ex.size };
+    l.strong = { name: o.names.join(' + '), sets: o.sets, volume: Math.round(o.volume), exercises: o.ex.size, src: o.src };
   }
   for (const [id, a] of Object.entries(S.acts)) {
     if (a.d < start || a.d > today) continue;
@@ -1711,6 +1813,7 @@ $('#ciBody').addEventListener('click', async e => {
     S.checkins = S.checkins.filter(c => c !== checkinDone()); save(); renderAll();
   }
   if (e.target.id === 'ciSync') { e.target.textContent = 'Syncing…'; await runSync(); }
+  if (e.target.id === 'ciHevy') { e.target.textContent = 'Syncing…'; await runHevySync(); }
 });
 $('#wkPrev').onclick = () => { weekOffset--; renderPlan(); };
 $('#wkNext').onclick = () => { weekOffset++; renderPlan(); };
@@ -1846,6 +1949,26 @@ $('#strongFile').addEventListener('change', async e => {
   catch (err) { $('#strongMsg').innerHTML = `<span class="warn">${esc(err.message)}</span>`; }
 });
 
+// Hevy
+$('#hevyBox').addEventListener('click', async e => {
+  const id = e.target.id;
+  if (id === 'hvConnect') {
+    const key = $('#hvKey').value.trim();
+    if (!key) return hvMsg('Paste your API key first.', 'warn');
+    e.target.disabled = true; hvMsg('Checking key…');
+    try {
+      await hevyGet('/workouts/count', key);
+      let name = ''; try { const u = await hevyGet('/user/info', key); name = (u.data && (u.data.name || u.data.username)) || ''; } catch (err) {}
+      HV = { key, name }; saveHV(); renderHevy(); await runHevySync();
+    } catch (err) { hvMsg(esc(err.message), 'warn'); e.target.disabled = false; }
+  }
+  if (id === 'hvSync') { e.target.disabled = true; await runHevySync(); }
+  if (id === 'hvDisconnect' && confirm('Disconnect Hevy? Workouts already synced stay in Recomp.')) { HV = {}; saveHV(); hvMsg(''); renderHevy(); }
+});
+$('#hevyBox').addEventListener('change', e => {
+  if (e.target.id === 'hvWeights') { HV.weights = e.target.checked; saveHV(); if (HV.weights) runHevySync(); }
+});
+
 // Strava
 $('#stravaBox').addEventListener('click', async e => {
   const id = e.target.id;
@@ -1885,6 +2008,7 @@ fillLogForm(todayIso());
 initBackup();
 if (!S.settings.onboarded) openOnboarding();
 if (SV.refresh && (!SV.lastSync || Date.now() / 1000 - SV.lastSync > 3 * 3600)) runSync(true);
+if (HV.key && (!HV.lastSync || Date.now() - HV.lastSync > 3 * 3600e3)) runHevySync(true);
 </script>
 </body>
 </html>
