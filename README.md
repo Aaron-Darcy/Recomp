@@ -70,6 +70,8 @@ Needs **Hevy Pro**, which is what gives access to Hevy's API.
 
 The first sync pulls your whole workout history. After that, Recomp only fetches what changed (new, edited or deleted workouts) whenever you open the page. You can also tick **Also import weigh-ins** to bring in body weight logged in Hevy. It only fills days that don't have a weigh-in yet.
 
+**One-tap morning weigh-ins:** make an iPhone Shortcut that asks for a number and saves it to Apple Health (**Log Health Sample → Weight**), and let Hevy read weight from Apple Health. Each weigh-in then goes from Health to Hevy to Recomp. Recomp checks for new weigh-ins whenever you open it or come back to the tab, and shows whether today's weigh-in has arrived. If you correct a weigh-in in Hevy, the correction comes through. A weight you type into Recomp is treated as manual and is never overwritten. A weigh-in that looks like a typo (far from your trend) is flagged and left out of the trend until you fix or confirm it. There's also a weigh-in streak on the dashboard.
+
 Moving from Strong? Hevy uses the same exercise names, so your Strong history and Hevy sessions line up. If you imported your Strong history into Hevy, Recomp spots the duplicates and keeps the Hevy copy. Your API key is stored in your browser only and never written to backups.
 
 ## Importing Strong (optional)

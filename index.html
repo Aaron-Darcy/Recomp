@@ -188,7 +188,7 @@ button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;
   <section id="t-log" class="card hidden">
     <form class="log" id="logForm">
       <label class="f">Date<input type="date" id="lDate" required></label>
-      <label class="f"><span id="lWeightLbl">Morning weight</span><input type="number" step="0.05" min="20" max="700" id="lWeight"></label>
+      <label class="f"><span id="lWeightLbl">Morning weight</span><input type="number" step="0.05" min="20" max="700" id="lWeight"><span class="src" id="lWeightSrc"></span></label>
       <label class="f">Calories eaten<input type="number" step="10" min="0" id="lKcal" placeholder="optional"></label>
       <div class="checks">
         <label><input type="checkbox" id="lGym"> Gym</label>
@@ -276,6 +276,15 @@ button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;
     <p class="help">Hevy Pro has an official API, so your workouts sync automatically. Get your API key at <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener">hevy.com/settings?developer</a> and paste it below. It's stored only in this browser and never written to backups.</p>
     <div id="hevyBox"></div>
     <div class="status" id="hvMsg"></div>
+    <details class="help" style="margin-top:10px">
+      <summary><b>Morning weigh-in from your iPhone</b> (one tap, no typing into Recomp)</summary>
+      <ol class="steps">
+        <li>In the <b>Shortcuts</b> app make a shortcut with two actions: <b>Ask for Input</b> (type: Number, prompt "Weight (kg)?") and <b>Log Health Sample</b> (Weight = <i>Provided Input</i>, kg).</li>
+        <li>In Hevy, let it read your weight from <b>Apple Health</b>. Hevy then copies each weigh-in into its Measures, and Recomp picks it up from Hevy.</li>
+        <li>Run it from a Lock Screen or Control Center button, Back Tap, an Apple Watch complication, or Automation → <b>Alarm → Is Stopped</b>, so it pops up as you get up.</li>
+      </ol>
+      <p>Hevy grabs new Health weights when it syncs (usually when you open the Hevy app). Recomp checks Hevy every time you open it or come back to the tab. The shortcut holds no API key, so there's nothing to leak.</p>
+    </details>
 
     <h2>Strong (CSV import)</h2>
     <p class="help">Strong can export your workouts: <b>Strong → Profile → ⚙ Settings → Export Strong Data</b>. Get the CSV onto this computer and import it. Your full history feeds the <b>Lifts</b> tab and dashboard. Only sessions from your start date onwards get ticked in the daily log. Re-importing only updates, never duplicates.</p>
@@ -422,9 +431,34 @@ function actKcal(a, w) {
 }
 function formulaTDEE(a, w) { return bmr(w) * S.settings.factor + actKcal(a, w); }
 
-function weighIns() {
+function rawWeighIns() {
   return Object.keys(S.logs).filter(k => +S.logs[k].weight > 0).sort()
     .map(k => ({ date: k, x: dayNum(k), w: +S.logs[k].weight }));
+}
+// Weigh-ins that look like typos: more than max(1.5 kg, 2.5%) off the running trend, unless the next weigh-in
+// agrees with it (two in a row = a real change) or you've confirmed it with "It's right".
+function flaggedWeighIns() {
+  const raw = rawWeighIns(), out = new Set();
+  let e = null;
+  raw.forEach((o, i) => {
+    if (e != null && !S.logs[o.date].wOk) {
+      const lim = Math.max(1.5, 0.025 * e), next = raw[i + 1];
+      const confirmed = next && Math.abs(next.w - o.w) <= 1 && Math.abs(next.w - e) > lim;
+      if (Math.abs(o.w - e) > lim && !confirmed) { out.add(o.date); return; }
+    }
+    e = e == null ? o.w : e + 0.15 * (o.w - e);
+  });
+  return out;
+}
+function weighIns() { const f = flaggedWeighIns(); return rawWeighIns().filter(o => !f.has(o.date)); }
+// Consecutive days with a weigh-in, ending today (or yesterday if today isn't in yet), plus the best run ever.
+function weighInStreak() {
+  const has = d => S.logs[d] && +S.logs[d].weight > 0;
+  let d = new Date(); if (!has(iso(d))) d = addDays(d, -1);
+  let cur = 0; while (has(iso(d))) { cur++; d = addDays(d, -1); }
+  let best = 0, run = 0, prev = null;
+  for (const x of Object.keys(S.logs).filter(has).sort()) { run = prev && dayNum(x) - dayNum(prev) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = x; }
+  return { cur, best: Math.max(best, cur), today: has(todayIso()) };
 }
 function trendSeries() {
   let e = null;
@@ -446,8 +480,8 @@ function recentRate(days = 21) {
 // Learns the gap between formula maintenance and real maintenance from the last 4 weeks.
 function calibration() {
   const today = dayNum(todayIso()), from = today - 28;
-  const keys = Object.keys(S.logs).filter(k => dayNum(k) > from && dayNum(k) <= today);
-  const w = keys.filter(k => +S.logs[k].weight > 0).map(k => ({ x: dayNum(k), w: +S.logs[k].weight }));
+  const keys = Object.keys(S.logs).filter(k => dayNum(k) > from && dayNum(k) <= today), flagged = flaggedWeighIns();
+  const w = keys.filter(k => +S.logs[k].weight > 0 && !flagged.has(k)).map(k => ({ x: dayNum(k), w: +S.logs[k].weight }));
   const eat = keys.filter(k => +S.logs[k].kcal > 0);
   const xs = keys.filter(k => +S.logs[k].weight > 0 || +S.logs[k].kcal > 0).map(dayNum);
   const span = xs.length ? Math.max(...xs) - Math.min(...xs) : 0;
@@ -523,8 +557,12 @@ function renderStats() {
   }
   const nextKey = weekKey(1), np = weekPlan(nextKey);
   const npT = np.map((a, i) => targetFor(a, cal, iso(addDays(parse(nextKey), i))));
+  const td = todayIso(), tl = S.logs[td], hevyOn = HV.key && HV.weights !== false;
+  const todayTxt = tl && +tl.weight > 0
+    ? `<span class="good">✓</span> Today: ${fw(tl.weight)} ${wu()}${tl.wSrc === 'hevy' ? ' (Hevy)' : ''}${flaggedWeighIns().has(td) ? ' <span class="warn">⚠ looks off</span>' : ''}`
+    : `⏳ No weigh-in yet today${hevyOn ? ' · <button class="link" id="wiCheck">Check Hevy</button>' : ''}`;
   $('#stats').innerHTML = `
-    <div class="card stat"><div class="lbl">Trend weight</div><div class="val">${fw(w)} ${wu()}</div><div class="note">${phaseText()}</div></div>
+    <div class="card stat"><div class="lbl">Trend weight</div><div class="val">${fw(w)} ${wu()}</div><div class="note">${phaseText()}<br>${todayTxt}</div></div>
     <div class="card stat"><div class="lbl">Rate (last 3 wks)</div><div class="val">${rTxt}</div><div class="note">${rateNote}</div></div>
     <div class="card stat"><div class="lbl">Maintenance, rest day</div><div class="val">${r10(rest)} kcal</div><div class="note">${calTxt}</div></div>
     <div class="card stat"><div class="lbl">Next week avg target</div><div class="val">${r10(avg(npT))} kcal</div><div class="note">${fmtShort(nextKey)}: ${npT.join(' · ')}</div></div>`;
@@ -565,6 +603,7 @@ function fillLogForm(d) {
   const l = S.logs[d], a = l || plannedActs(d);
   $('#lDate').value = d;
   $('#lWeight').value = l && l.weight ? +fw(l.weight, 2) : '';
+  $('#lWeightSrc').textContent = l && l.weight && l.wSrc === 'hevy' ? 'from Hevy · changing it here makes it manual' : '';
   $('#lGym').checked = !!a.gym; $('#lTrain').checked = !!a.train; $('#lMatch').checked = !!a.match;
   $('#lRun').value = a.run ? fd(a.run, 2) : '';
   $('#lKcal').value = l && l.kcal ? l.kcal : targetFor(a, undefined, d);
@@ -585,10 +624,14 @@ function renderLog() {
     for (const a of Object.values(l.strava || {})) out.push(`Strava: ${esc(a.name)}${a.km ? ` · ${fd(a.km)} ${du()}` : ''} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal (watch)` : ''}`);
     return out.map(s => `<span class="src">${s}</span>`).join('');
   };
+  const flagged = flaggedWeighIns();
+  const wCell = (k, l) => !l.weight ? '—' : fw(l.weight, 2) +
+    (l.wSrc === 'hevy' ? '<span class="src">via Hevy</span>' : '') +
+    (flagged.has(k) ? `<span class="src warn">⚠ looks off, so it's left out of your trend · <button class="link" data-wok="${k}">It's right</button></span>` : '');
   $('#logTable').innerHTML = `<tr><th>Date</th><th>Weight</th><th>Trend</th><th>Eaten</th><th>Activity</th><th></th></tr>` +
     keys.map(k => { const l = S.logs[k]; return `<tr>
       <td>${DAYS[dayIdx(parse(k))]} ${fmtShort(k)}</td>
-      <td>${l.weight ? fw(l.weight, 2) : '—'}</td>
+      <td>${wCell(k, l)}</td>
       <td>${trend[k] ? fw(trend[k], 2) : '—'}</td>
       <td>${l.kcal || '—'}</td>
       <td>${actsText(l)}${src(l)}</td>
@@ -651,7 +694,9 @@ function lineChart(el, o) {
   let marks = '';
   for (const s of o.series) {
     const col = s.color || (s.type === 'line' ? 'var(--accent)' : 'var(--dot)');
-    if (s.type === 'dots') marks += s.pts.map(p => `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+    if (s.type === 'dots') marks += s.pts.map(p => s.hollow
+      ? `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" fill="var(--surface)" stroke="var(--warn)" stroke-width="2"/>`
+      : `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.y).toFixed(1)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
     else if (s.pts.length) marks += `<path d="${s.pts.map((p, i) => (i ? 'L' : 'M') + X(p.x).toFixed(1) + ' ' + Y(p.y).toFixed(1)).join('')}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
   }
   el.innerHTML = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.label || 'Chart')}">${g}${marks}
@@ -879,7 +924,7 @@ function renderCheckin() {
     const L = R.lifts, lt = L.up + L.same + L.down;
     $('#ciBody').innerHTML = `<h2>Weekly check-in · reviewing ${fmtShort(R.from)} – ${fmtShort(R.to)}</h2>
       <div class="summary">
-        <div>Weight<br><b>${R.avgW != null ? fw(R.avgW) + ' ' + wu() : '—'}</b> avg<span class="src">${R.weighIns} weigh-in${R.weighIns === 1 ? '' : 's'}${R.avgW != null && R.prevW != null ? ` · ${sgn(fw(R.avgW - R.prevW, 2))} ${wu()} vs week before` : ''}</span></div>
+        <div>Weight<br><b>${R.avgW != null ? fw(R.avgW) + ' ' + wu() : '—'}</b> avg<span class="src">${R.weighIns} weigh-in${R.weighIns === 1 ? '' : 's'} · streak ${weighInStreak().cur}${R.avgW != null && R.prevW != null ? ` · ${sgn(fw(R.avgW - R.prevW, 2))} ${wu()} vs week before` : ''}</span></div>
         <div>Eating<br><b>${R.kcal != null ? R.kcal : '—'}</b> kcal avg<span class="src">target avg ${R.target} · ${R.kcalDays}/7 days logged</span></div>
         <div>Training<br><b>${R.gym}/${R.gymPlanned}</b> gym<span class="src">${sp ? `${R.football} ${esc(sp.toLowerCase())} · ` : ''}${fd(R.runKm)} ${du()} run</span></div>
         <div>Lifts<br><b>${lt ? `${L.up} up` : '—'}</b>${lt ? ` · ${L.same} same · ${L.down} down` : ''}<span class="src">${lt ? 'vs the previous time you did each exercise' : 'Connect Hevy or import Strong to see this'}</span></div>
@@ -1046,8 +1091,10 @@ function insights() {
     else out.push({ ok: true, t: 'Fuel: your logged calories match the targets on training and rest days.' });
   }
   // consistency
-  const wi = Object.keys(S.logs).filter(d => d > iso(addDays(new Date(), -14)) && S.logs[d].weight > 0).length;
-  out.push({ ok: wi >= 8, t: `Consistency: ${wi} weigh-ins in the last 14 days${S.checkins.length ? ` · ${S.checkins.length} check-in${S.checkins.length > 1 ? 's' : ''} done` : ''}.` });
+  const d14 = iso(addDays(new Date(), -14)), odd = [...flaggedWeighIns()].filter(d => d > d14);
+  if (odd.length) out.push({ ok: false, t: `Weigh-in check: ${odd.map(d => `${fmtShort(d)} (${fw(S.logs[d].weight)} ${wu()})`).join(', ')} ${odd.length > 1 ? 'look' : 'looks'} off, so ${odd.length > 1 ? 'they’re' : 'it’s'} left out of your trend. Fix ${odd.length > 1 ? 'them' : 'it'} in the Daily log, or tap “It’s right”.` });
+  const wi = Object.keys(S.logs).filter(d => d > d14 && S.logs[d].weight > 0).length, st = weighInStreak();
+  out.push({ ok: wi >= 8, t: `Consistency: ${wi} weigh-ins in the last 14 days · streak ${st.cur} day${st.cur === 1 ? '' : 's'} (best ${st.best})${S.checkins.length ? ` · ${S.checkins.length} check-in${S.checkins.length > 1 ? 's' : ''} done` : ''}.` });
   return out;
 }
 function renderDashboard() {
@@ -1063,16 +1110,17 @@ function renderDashboard() {
     tile('Gym this week', `${cur.gym}/${weekPlan(weekKey(0)).filter(a => a.gym).length}`, `4-wk avg ${pa('gym').toFixed(1)}`) +
     tile('Running', `${fd(cur.runKm)} ${du()}`, `4-wk avg ${fd(pa('runKm'))}`) +
     (sp ? tile(esc(cap(sp)), `${cur.sport}`, `4-wk avg ${pa('sport').toFixed(1)}`) : '') +
-    tile('Weigh-ins', `${cur.weighIns}/${cur.days}`, `4-wk avg ${pa('weighIns').toFixed(1)}`) +
+    (st => tile('Weigh-in streak', `${st.cur} day${st.cur === 1 ? '' : 's'}${st.cur >= 3 ? ' 🔥' : ''}`, `best ${st.best} · this week ${cur.weighIns}/${cur.days}${st.today ? '' : ' · none today yet'}`))(weighInStreak()) +
     tile('Calories vs target', cur.kcal != null ? sgn(Math.round(cur.kcal - cur.target)) : '—', cur.kcal != null ? `avg ${Math.round(cur.kcal)} eaten` : 'nothing logged yet');
   $('#dInsights').innerHTML = insights().map(i => `<li><span class="ic">${i.ok === true ? '<span class="good">✓</span>' : i.ok === false ? '<span class="warn">⚠</span>' : 'ℹ︎'}</span><span>${i.t}</span></li>`).join('');
 
   // body
-  const tr = trendSeries().filter(o => o.date >= from);
+  const tr = trendSeries().filter(o => o.date >= from), fl = [...flaggedWeighIns()].filter(d => d >= from).map(d => ({ x: dayNum(d), y: wOut(+S.logs[d].weight), date: d }));
   lineChart($('#cWeight'), { label: 'Weight trend', height: 230, empty: 'Log at least 2 weigh-ins to see your chart.',
-    series: [{ type: 'dots', pts: tr.map(o => ({ x: o.x, y: wOut(o.w) })) }, { type: 'line', pts: tr.map(o => ({ x: o.x, y: wOut(o.t) })) }],
+    series: [{ type: 'dots', pts: tr.map(o => ({ x: o.x, y: wOut(o.w) })) }, { type: 'dots', hollow: true, pts: fl }, { type: 'line', pts: tr.map(o => ({ x: o.x, y: wOut(o.t) })) }],
     yFmt: v => v.toFixed(1),
-    tip: x => { const o = tr.find(p => p.x === x), l = S.logs[o.date]; return `<b>${DAYS[dayIdx(parse(o.date))]} ${fmtShort(o.date)}</b><br>Weight ${fw(o.w, 2)} ${wu()}<br>Trend ${fw(o.t, 2)} ${wu()}${l && l.kcal ? `<br>Ate ${l.kcal} kcal` : ''}`; } });
+    tip: x => { const f = fl.find(p => p.x === x); if (f) return `<b>${DAYS[dayIdx(parse(f.date))]} ${fmtShort(f.date)}</b><br>Weight ${fw(S.logs[f.date].weight, 2)} ${wu()}<br><span class="warn">⚠ looks off, left out of the trend</span>`;
+      const o = tr.find(p => p.x === x), l = S.logs[o.date]; return `<b>${DAYS[dayIdx(parse(o.date))]} ${fmtShort(o.date)}</b><br>Weight ${fw(o.w, 2)} ${wu()}<br>Trend ${fw(o.t, 2)} ${wu()}${l && l.kcal ? `<br>Ate ${l.kcal} kcal` : ''}`; } });
   const cal = activeCal();
   const kb = weeks.map(ws => {
     const eat = span7(ws, 0).filter(d => d >= from && S.logs[d] && S.logs[d].kcal > 0);
@@ -1423,6 +1471,7 @@ function restoreWorkbook(wb) {
       const d = cellDate(row.Date); if (!d) continue;
       seen.add(d);
       const l = r.logs[d] || (r.logs[d] = {});
+      if (l.wSrc && Math.abs((+row['Weight (kg)'] || 0) - (+l.weight || 0)) > 0.005) delete l.wSrc;   // edited in Excel = manual
       Object.assign(l, {
         weight: +row['Weight (kg)'] || 0, kcal: +row['Calories eaten'] || 0,
         gym: +row.Gym ? 1 : 0, train: +row.Training ? 1 : 0, match: +row.Match ? 1 : 0, run: +row['Run (km)'] || 0
@@ -1653,20 +1702,48 @@ async function hevySync() {
   }
   S.workouts = Object.values(byId).sort(byDate);
   const dupes = dropStrongDuplicates();
-  if (HV.weights) for (const b of await hevyPages('/body_measurements', 'body_measurements')) {
-    const d = anyDate(String(b.date || ''));
-    if (!d || !(b.weight_kg > 0) || d < startDate() || d > todayIso() || (S.logs[d] && +S.logs[d].weight > 0)) continue;   // never overwrite a weigh-in
-    logFor(d).weight = +b.weight_kg.toFixed(2); weighIns++;
-  }
+  if (HV.weights !== false) weighIns = await hevyWeighIns();
   HV.lastSync = Date.now(); saveHV();
   applyImports(); save(); renderAll();
   return { changed, removed, dupes, weighIns };
+}
+// Weigh-ins from Hevy (which also picks up Apple Health weights). Hevy-sourced days (wSrc) follow Hevy,
+// including corrections and deletions; a weight you type in Recomp is manual and is never overwritten.
+async function hevyWeighIns() {
+  const list = await hevyPages('/body_measurements', 'body_measurements');
+  const start = startDate(), today = todayIso(), seen = new Set(), r = { added: 0, updated: 0, removed: 0 };
+  for (const b of list) {
+    const d = anyDate(String(b.date || '')), kg = +b.weight_kg;
+    if (!d || !(kg > 0) || d < start || d > today) continue;
+    const v = +kg.toFixed(2), l = S.logs[d];
+    seen.add(d);
+    if (!l || !(+l.weight > 0)) { Object.assign(logFor(d), { weight: v, wSrc: 'hevy' }); delete S.logs[d].wOk; r.added++; }
+    else if (l.wSrc === 'hevy' && +l.weight !== v) { l.weight = v; delete l.wOk; r.updated++; }
+  }
+  if (list.length) for (const [d, l] of Object.entries(S.logs))   // an empty reply is treated as a glitch, not "delete everything"
+    if (l.wSrc === 'hevy' && !seen.has(d)) { l.weight = 0; delete l.wSrc; delete l.wOk; r.removed++; }
+  HV.lastWeights = Date.now(); saveHV();
+  return r;
+}
+let wiBusy = false;
+async function refreshWeighIns(loud) {
+  if (!HV.key || HV.weights === false || wiBusy) return;
+  wiBusy = true;
+  try {
+    const r = await hevyWeighIns();
+    if (r.added || r.updated || r.removed) {
+      save(); renderAll();
+      if ($('#lDate').value === todayIso()) fillLogForm(todayIso());
+    } else if (loud) renderStats();
+    if (loud) hvMsg(r.added || r.updated || r.removed ? `Weigh-ins: ${r.added} added, ${r.updated} updated${r.removed ? `, ${r.removed} removed` : ''}.` : 'Weigh-ins are up to date.', 'good');
+  } catch (e) { if (loud) hvMsg(esc(e.message), 'warn'); }
+  wiBusy = false;
 }
 async function runHevySync(silent) {
   if (!silent) hvMsg('Syncing…');
   try {
     const r = await hevySync(), pl = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-    hvMsg(`Synced: ${pl(r.changed, 'workout')} added or updated${r.removed ? `, ${r.removed} removed` : ''}${r.dupes ? `, ${pl(r.dupes, 'duplicate Strong session')} replaced by Hevy's copy` : ''}${HV.weights ? `, ${pl(r.weighIns, 'weigh-in')} added` : ''}.`, 'good');
+    hvMsg(`Synced: ${pl(r.changed, 'workout')} added or updated${r.removed ? `, ${r.removed} removed` : ''}${r.dupes ? `, ${pl(r.dupes, 'duplicate Strong session')} replaced by Hevy's copy` : ''}${r.weighIns ? `, weigh-ins ${r.weighIns.added} added / ${r.weighIns.updated} updated${r.weighIns.removed ? ` / ${r.weighIns.removed} removed` : ''}` : ''}.`, 'good');
   } catch (e) { hvMsg(esc(e.message), 'warn'); }
 }
 function renderHevy() {
@@ -1679,7 +1756,7 @@ function renderHevy() {
   box.innerHTML = `<div class="row"><span class="pill"><span class="good">●</span> Connected${HV.name ? ' as ' + esc(HV.name) : ''}</span>
       <span class="help">${n} workout${n === 1 ? '' : 's'} · last sync: ${HV.lastSync ? new Date(HV.lastSync).toLocaleString() : 'never'}</span>
       <button class="btn primary" id="hvSync">Sync now</button><button class="btn" id="hvDisconnect">Disconnect</button></div>
-    <label class="checks" style="margin-top:8px"><input type="checkbox" id="hvWeights" ${HV.weights ? 'checked' : ''}> Also import weigh-ins logged in Hevy (only fills days that have no weight yet)</label>
+    <label class="checks" style="margin-top:8px"><input type="checkbox" id="hvWeights" ${HV.weights !== false ? 'checked' : ''}> Import weigh-ins from Hevy (Apple Health weights land there too). Weights you type in Recomp always win.</label>
     <p class="help">Hevy workouts feed the <b>Lifts</b> tab, the dashboard and the gym ticks in your daily log, the same way Strong does. Exercise names match Strong's, so your old Strong history and new Hevy sessions join up. If you imported your Strong history into Hevy, the duplicates are swapped for the Hevy copies automatically. Syncs each time you open the page.</p>`;
 }
 
@@ -1768,6 +1845,7 @@ function showTab(t) {
   if (t === 'dash') renderDashboard();
   window.scrollTo({ top: 0 });
 }
+$('#stats').addEventListener('click', async e => { if (e.target.id === 'wiCheck') { e.target.textContent = 'Checking…'; await refreshWeighIns(true); renderStats(); } });
 $('#tabs').addEventListener('click', e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
 // Scrolling the page over a focused number box would silently change its value.
 document.addEventListener('wheel', e => { if (e.target.type === 'number' && e.target === document.activeElement) e.target.blur(); }, { passive: true });
@@ -1840,12 +1918,15 @@ $('#logForm').addEventListener('submit', e => {
   e.preventDefault();
   const d = $('#lDate').value; if (!d) return;
   const wv = +$('#lWeight').value;
-  Object.assign(logFor(d), { weight: wv ? +wIn(wv).toFixed(3) : 0, kcal: +$('#lKcal').value || 0, ...formActs() });
+  const l = logFor(d), shown = l.weight ? +fw(l.weight, 2) : 0;
+  if (wv !== shown) { l.weight = wv ? +wIn(wv).toFixed(3) : 0; delete l.wSrc; delete l.wOk; }   // edited here = manual from now on
+  Object.assign(l, { kcal: +$('#lKcal').value || 0, ...formActs() });
   save(); renderAll();
   fillLogForm(d);
 });
 $('#logTable').addEventListener('click', e => {
-  const del = e.target.dataset.del, ed = e.target.dataset.edit;
+  const del = e.target.dataset.del, ed = e.target.dataset.edit, ok = e.target.dataset.wok;
+  if (ok) { S.logs[ok].wOk = 1; save(); renderAll(); return; }
   if (del && confirm(`Delete ${del}?`)) { delete S.logs[del]; save(); renderAll(); fillLogForm($('#lDate').value); }
   if (ed) { fillLogForm(ed); window.scrollTo({ top: $('#logForm').offsetTop - 20, behavior: 'smooth' }); }
 });
@@ -1966,7 +2047,7 @@ $('#hevyBox').addEventListener('click', async e => {
   if (id === 'hvDisconnect' && confirm('Disconnect Hevy? Workouts already synced stay in Recomp.')) { HV = {}; saveHV(); hvMsg(''); renderHevy(); }
 });
 $('#hevyBox').addEventListener('change', e => {
-  if (e.target.id === 'hvWeights') { HV.weights = e.target.checked; saveHV(); if (HV.weights) runHevySync(); }
+  if (e.target.id === 'hvWeights') { HV.weights = e.target.checked; saveHV(); if (HV.weights) refreshWeighIns(true); }
 });
 
 // Strava
@@ -2008,7 +2089,12 @@ fillLogForm(todayIso());
 initBackup();
 if (!S.settings.onboarded) openOnboarding();
 if (SV.refresh && (!SV.lastSync || Date.now() / 1000 - SV.lastSync > 3 * 3600)) runSync(true);
-if (HV.key && (!HV.lastSync || Date.now() - HV.lastSync > 3 * 3600e3)) runHevySync(true);
+if (HV.key && (!HV.lastSync || Date.now() - HV.lastSync > 3 * 3600e3)) runHevySync(true);   // full sync (includes weigh-ins)
+else refreshWeighIns();                                                                        // otherwise just this morning's weigh-in
+// Tab left open overnight? Check for a new weigh-in when you come back to it.
+const wiStale = () => Date.now() - (HV.lastWeights || 0) > 10 * 6e4;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && wiStale()) refreshWeighIns(); });
+window.addEventListener('focus', () => { if (wiStale()) refreshWeighIns(); });
 </script>
 </body>
 </html>
