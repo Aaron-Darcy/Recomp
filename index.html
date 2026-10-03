@@ -237,6 +237,19 @@ button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;
     </div>
     <div class="summary" id="runSummary"></div>
 
+    <div id="healthSec" class="hidden">
+      <div class="sec">Recovery &amp; heart <span style="text-transform:none;letter-spacing:0;font-weight:400">· from Apple Health</span></div>
+      <div class="tiles" id="hTiles"></div>
+      <div class="charts" style="margin-top:12px">
+        <div class="panel"><div class="ph">Resting heart rate <span class="legend"><span><span class="sw-dot"></span>Day</span><span><span class="sw-line"></span>7-day avg</span><span class="note">lower = better recovered</span></span></div><div class="chartbox" id="cRhr"></div></div>
+        <div class="panel"><div class="ph">Heart rate variability <span class="legend"><span><span class="sw-dot"></span>Day</span><span><span class="sw-line"></span>7-day avg</span><span class="note">higher = better recovered</span></span></div><div class="chartbox" id="cHrv"></div></div>
+        <div class="panel"><div class="ph">Sleep <span class="note">hours asleep</span></div><div class="chartbox" id="cSleep"></div></div>
+        <div class="panel"><div class="ph">Steps <span class="note">per day</span></div><div class="chartbox" id="cSteps"></div></div>
+        <div class="panel"><div class="ph">Protein <span class="legend"><span><span class="sw-line" style="height:8px;width:8px;border-radius:2px"></span>Eaten</span><span><span class="sw-tick"></span>Target</span></span></div><div class="chartbox" id="cProtein"></div></div>
+        <div class="panel"><div class="ph">VO2 max <span class="note">ml/kg/min, estimated by your watch</span></div><div class="chartbox" id="cVo2"></div></div>
+      </div>
+    </div>
+
     <div id="sportSec">
       <div class="sec" id="sportHdr">Sport</div>
       <div class="charts">
@@ -271,6 +284,11 @@ button.link{background:none;border:0;padding:0;color:var(--accent);font:inherit;
     <p class="help">Anything that reaches Strava can be pulled in: Apple Watch, Garmin, Coros, Wear OS and so on. Apple Watch: in the Strava iPhone app go to You → ⚙ Settings → Applications, Services, and Devices → <b>Health</b> and allow workout uploads.</p>
     <div id="stravaBox"></div>
     <div class="status" id="svMsg"></div>
+
+    <h2>Apple Health (heart, sleep, food, workouts)</h2>
+    <p class="help">Health Auto Export on your iPhone sends your Apple Health data in the background to your own small relay, and Recomp collects it from there, just like Hevy and Strava. One-off setup, about 10 minutes.</p>
+    <div id="healthBox"></div>
+    <div class="status" id="hxMsg"></div>
 
     <h2>Hevy (gym sessions)</h2>
     <p class="help">Hevy Pro has an official API, so your workouts sync automatically. Get your API key at <a href="https://hevy.com/settings?developer" target="_blank" rel="noopener">hevy.com/settings?developer</a> and paste it below. It's stored only in this browser and never written to backups.</p>
@@ -343,7 +361,8 @@ const defaults = () => ({
   workouts: [], // Strong sessions: {id, d, n: name, m: minutes, s: [[exercise, weight, reps, setOrder]]}
   incr: {},     // exercise -> weight step override
   checkins: [], // weekly check-ins; the latest one locks the calorie adjustment for the week
-  acts: {}      // Strava activities by id: {d, type, name, km, min, kcal}
+  acts: {},     // Strava + Apple Health workouts by id: {d, type, name, km, min, kcal, start?, src?}
+  health: {}    // Apple Health daily summaries by date: {sleep:{total,deep,rem,core,awake}, rhr, hrv, steps, active, basal, vo2, kcal, mac, …}
 });
 
 let S = load();
@@ -353,7 +372,7 @@ function normalize(r) {
   const d = defaults();
   r = r || {};
   return { settings: {...d.settings, ...(r.settings || {})}, template: r.template || d.template, plans: r.plans || {}, logs: r.logs || {},
-           workouts: r.workouts || [], incr: r.incr || {}, checkins: r.checkins || [], acts: r.acts || {}, demo: !!r.demo };
+           workouts: r.workouts || [], health: r.health || {}, incr: r.incr || {}, checkins: r.checkins || [], acts: r.acts || {}, demo: !!r.demo };
 }
 function load() {
   try { const r = JSON.parse(localStorage.getItem(KEY)); if (r && r.settings) return normalize(r); } catch (e) {}
@@ -492,7 +511,7 @@ function recentRate(days = 21) {
 // Learns the gap between formula maintenance and real maintenance from the last 4 weeks.
 function calibration() {
   const today = dayNum(todayIso()), from = today - 28;
-  const keys = Object.keys(S.logs).filter(k => dayNum(k) > from && dayNum(k) <= today), flagged = flaggedWeighIns();
+  const keys = Object.keys(S.logs).filter(k => dayNum(k) > from && dayNum(k) < today), flagged = flaggedWeighIns();   // today is still in progress
   const w = keys.filter(k => +S.logs[k].weight > 0 && !flagged.has(k)).map(k => ({ x: dayNum(k), w: +S.logs[k].weight }));
   const eat = keys.filter(k => +S.logs[k].kcal > 0);
   const xs = keys.filter(k => +S.logs[k].weight > 0 || +S.logs[k].kcal > 0).map(dayNum);
@@ -571,8 +590,8 @@ function renderStats() {
   const npT = np.map((a, i) => targetFor(a, cal, iso(addDays(parse(nextKey), i))));
   const td = todayIso(), tl = S.logs[td], hevyOn = HV.key && HV.weights !== false;
   const todayTxt = tl && +tl.weight > 0
-    ? `<span class="good">✓</span> Today: ${fw(tl.weight)} ${wu()}${tl.wSrc === 'hevy' ? ' (Hevy)' : ''}${flaggedWeighIns().has(td) ? ' <span class="warn">⚠ looks off</span>' : ''}`
-    : `⏳ No weigh-in yet today${hevyOn ? ' · <button class="link" id="wiCheck">Check Hevy</button>' : ''}`;
+    ? `<span class="good">✓</span> Today: ${fw(tl.weight)} ${wu()}${tl.wSrc === 'hevy' ? ' (Hevy)' : tl.wSrc === 'health' ? ' (Health)' : ''}${flaggedWeighIns().has(td) ? ' <span class="warn">⚠ looks off</span>' : ''}`
+    : `⏳ No weigh-in yet today${hevyOn || HX.url ? ' · <button class="link" id="wiCheck">Check now</button>' : ''}`;
   $('#stats').innerHTML = `
     <div class="card stat"><div class="lbl">Trend weight</div><div class="val">${fw(w)} ${wu()}</div><div class="note">${phaseText()}<br>${todayTxt}</div></div>
     <div class="card stat"><div class="lbl">Rate (last 3 wks)</div><div class="val">${rTxt}</div><div class="note">${rateNote}</div></div>
@@ -601,7 +620,8 @@ function renderPlan() {
       <div class="mac">P ${m.p}g · C ${m.c}g · F ${m.f}g</div>
       ${watched.length ? `<div class="mac" title="Uses your watch's calories from Strava instead of the estimate">⌚ ${watched.join(' · ')} kcal (watch)</div>` : ''}
       ${d >= startDate() && d < goalStart() ? '<div class="mac"><span class="pill">Maintenance</span></div>' : ''}
-      ${log && log.kcal ? `<div class="logged">Logged ${log.kcal} kcal</div>` : ''}
+      ${d === today && log && log.kSrc === 'health' ? `<div class="logged">Eaten so far ${log.kcal}${log.mac ? ` · P ${log.mac.p}g` : ''}<br><b>${Math.max(0, k - log.kcal)} kcal${log.mac ? ` &amp; ${Math.max(0, m.p - log.mac.p)}g protein` : ''} left</b></div>`
+        : log && log.kcal ? `<div class="logged">${log.kSrc === 'health' ? 'Ate' : 'Logged'} ${log.kcal} kcal</div>` : ''}
     </div>`;
   }).join('');
   const ks = plan.map((a, i) => targetFor(a, cal, iso(addDays(start, i)))), total = sum(ks);
@@ -618,10 +638,11 @@ function fillLogForm(d) {
   const l = S.logs[d], a = l || plannedActs(d);
   $('#lDate').value = d;
   $('#lWeight').value = l && l.weight ? +fw(l.weight, 2) : '';
-  $('#lWeightSrc').textContent = l && l.weight && l.wSrc === 'hevy' ? 'from Hevy · changing it here makes it manual' : '';
+  $('#lWeightSrc').textContent = l && l.weight && (l.wSrc === 'hevy' || l.wSrc === 'health') ? `from ${l.wSrc === 'hevy' ? 'Hevy' : 'Apple Health'} · changing it here makes it manual` : '';
   $('#lGym').checked = !!a.gym; $('#lTrain').checked = !!a.train; $('#lMatch').checked = !!a.match;
   $('#lRun').value = a.run ? fd(a.run, 2) : '';
   $('#lKcal').value = l && l.kcal ? l.kcal : targetFor(a, undefined, d);
+  $('#lKcal').dataset.pre = $('#lKcal').value;   // unchanged = not a manual entry (Health can still fill it in)
 }
 function formActs() { return { gym: $('#lGym').checked ? 1 : 0, train: $('#lTrain').checked ? 1 : 0, match: $('#lMatch').checked ? 1 : 0, run: +dIn(+$('#lRun').value || 0).toFixed(2) }; }
 function actsText(l) {
@@ -636,19 +657,19 @@ function renderLog() {
   const src = l => {
     const out = [];
     if (l.strong) out.push(`${l.strong.src === 'hevy' ? 'Hevy' : 'Strong'}: ${esc(l.strong.name)} · ${l.strong.sets} sets`);
-    for (const a of Object.values(l.strava || {})) out.push(`Strava: ${esc(a.name)}${a.km ? ` · ${fd(a.km)} ${du()}` : ''} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal (watch)` : ''}`);
+    for (const a of Object.values(l.strava || {})) out.push(`${a.src === 'health' ? 'Health' : 'Strava'}: ${esc(a.name)}${a.km ? ` · ${fd(a.km)} ${du()}` : ''} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal (watch)` : ''}`);
     return out.map(s => `<span class="src">${s}</span>`).join('');
   };
   const flagged = flaggedWeighIns();
   const wCell = (k, l) => !l.weight ? '—' : fw(l.weight, 2) +
-    (l.wSrc === 'hevy' ? '<span class="src">via Hevy</span>' : '') +
+    (l.wSrc === 'hevy' ? '<span class="src">via Hevy</span>' : l.wSrc === 'health' ? '<span class="src">via Health</span>' : '') +
     (flagged.has(k) ? `<span class="src warn">⚠ looks off, so it's left out of your trend · <button class="link" data-wok="${k}">It's right</button></span>` : '');
   $('#logTable').innerHTML = `<tr><th>Date</th><th>Weight</th><th>Trend</th><th>Eaten</th><th>Activity</th><th></th></tr>` +
     keys.map(k => { const l = S.logs[k]; return `<tr>
       <td>${DAYS[dayIdx(parse(k))]} ${fmtShort(k)}</td>
       <td>${wCell(k, l)}</td>
       <td>${trend[k] ? fw(trend[k], 2) : '—'}</td>
-      <td>${l.kcal || '—'}</td>
+      <td>${l.kcal || '—'}${l.kSrc === 'health' ? `<span class="src">via Health${l.mac ? ` · P ${l.mac.p} C ${l.mac.c} F ${l.mac.f}` : ''}</span>` : ''}</td>
       <td>${actsText(l)}${src(l)}</td>
       <td class="x"><button data-edit="${k}" title="Edit" aria-label="Edit ${k}">✎</button><button data-del="${k}" title="Delete" aria-label="Delete ${k}">×</button></td></tr>`; }).join('');
 }
@@ -699,7 +720,7 @@ function lineChart(el, o) {
   for (let y = y0; y <= y1 + 1e-9; y += step)
     g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(y)}" y2="${Y(y)}" stroke="var(--line)"/><text x="${m.l - 6}" y="${Y(y) + 4}" text-anchor="end">${yf(y)}</text>`;
   if (o.ref != null) g += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(o.ref)}" y2="${Y(o.ref)}" stroke="var(--good)" stroke-dasharray="4 4"/><text x="${W - m.r}" y="${Y(o.ref) - 4}" text-anchor="end">${o.refLabel || ''}</text>`;
-  const nt = Math.max(2, Math.min(6, Math.floor((W - m.l) / 90)));
+  const nt = Math.max(2, Math.min(6, Math.floor((W - m.l) / 90), Math.round(x1 - x0) + 1));   // never more ticks than days
   for (let i = 0; i < nt; i++) {
     const x = x0 + (x1 - x0) * i / (nt - 1);
     const d = parse(fromNum(x));
@@ -889,7 +910,8 @@ function weekReview(slot) {
     gym: ls.filter(l => l.gym).length, gymPlanned: days.filter(d => plannedActs(d).gym).length,
     football: ls.filter(l => l.train || l.match).length,
     runKm: +sum(ls.map(l => +l.run || 0)).toFixed(1),
-    lifts: liftChanges(days)
+    lifts: liftChanges(days),
+    health: healthWeek(days)
   };
 }
 // Goal-aware verdict on the weight trend.
@@ -942,6 +964,7 @@ function renderCheckin() {
         <div>Weight<br><b>${R.avgW != null ? fw(R.avgW) + ' ' + wu() : '—'}</b> avg<span class="src">${R.weighIns} weigh-in${R.weighIns === 1 ? '' : 's'} · streak ${weighInStreak().cur}${R.avgW != null && R.prevW != null ? ` · ${sgn(fw(R.avgW - R.prevW, 2))} ${wu()} vs week before` : ''}</span></div>
         <div>Eating<br><b>${R.kcal != null ? R.kcal : '—'}</b> kcal avg<span class="src">target avg ${R.target} · ${R.kcalDays}/7 days logged</span></div>
         <div>Training<br><b>${R.gym}/${R.gymPlanned}</b> gym<span class="src">${sp ? `${R.football} ${esc(sp.toLowerCase())} · ` : ''}${fd(R.runKm)} ${du()} run</span></div>
+        ${R.health ? `<div>Recovery<br><b>${R.health.sleep != null ? R.health.sleep.toFixed(1) + ' h' : '—'}</b> sleep<span class="src">${[R.health.rhr != null && `RHR ${Math.round(R.health.rhr)}`, R.health.hrv != null && `HRV ${Math.round(R.health.hrv)}`, R.health.steps != null && `${(R.health.steps / 1000).toFixed(1)}k steps`, R.health.pDays != null && `protein ${R.health.pDays}/${R.health.pOf} days`].filter(Boolean).join(' · ')}</span></div>` : ''}
         <div>Lifts<br><b>${lt ? `${L.up} up` : '—'}</b>${lt ? ` · ${L.same} same · ${L.down} down` : ''}<span class="src">${lt ? 'vs the previous time you did each exercise' : 'Connect Hevy or import Strong to see this'}</span></div>
       </div>
       <div class="verdict"><b>${vt}</b><br>${vd}</div>
@@ -1003,13 +1026,13 @@ const wkLabel = ws => fmtShort(ws);
 
 function runsList() {
   const out = [], viaStrava = new Set();
-  for (const a of Object.values(S.acts)) if (stravaKind(a, a.d) === 'run' && a.km > 0) { out.push({ d: a.d, km: a.km, min: a.min, name: a.name }); viaStrava.add(a.d); }
+  for (const a of Object.values(S.acts)) if (!a.dup && stravaKind(a, a.d) === 'run' && a.km > 0) { out.push({ d: a.d, km: a.km, min: a.min, name: a.name }); viaStrava.add(a.d); }
   for (const [d, l] of Object.entries(S.logs)) if (+l.run > 0 && !viaStrava.has(d)) out.push({ d, km: +l.run, min: 0, name: 'Logged run' });
   return out.sort((a, b) => a.d < b.d ? -1 : 1);
 }
 function sportList() {
   const out = [], seen = new Set();
-  for (const a of Object.values(S.acts)) { const k = stravaKind(a, a.d); if (k === 'train' || k === 'match') { out.push({ d: a.d, kind: k, min: a.min, kcal: a.kcal }); seen.add(a.d + k); } }
+  for (const a of Object.values(S.acts)) { if (a.dup) continue; const k = stravaKind(a, a.d); if (k === 'train' || k === 'match') { out.push({ d: a.d, kind: k, min: a.min, kcal: a.kcal }); seen.add(a.d + k); } }
   for (const [d, l] of Object.entries(S.logs)) for (const k of ['train', 'match']) if (l[k] && !seen.has(d + k)) out.push({ d, kind: k, min: 0, kcal: null });
   return out.sort((a, b) => a.d < b.d ? -1 : 1);
 }
@@ -1105,6 +1128,7 @@ function insights() {
     else if (rest.length >= 3 && gap(rest) > 150) out.push({ ok: false, t: `Fuel: rest days run ~${Math.round(gap(rest))} kcal over target.` });
     else out.push({ ok: true, t: 'Fuel: your logged calories match the targets on training and rest days.' });
   }
+  out.push(...healthInsights());
   // consistency
   const d14 = iso(addDays(new Date(), -14)), odd = [...flaggedWeighIns()].filter(d => d > d14);
   if (odd.length) out.push({ ok: false, t: `Weigh-in check: ${odd.map(d => `${fmtShort(d)} (${fw(S.logs[d].weight)} ${wu()})`).join(', ')} ${odd.length > 1 ? 'look' : 'looks'} off, so ${odd.length > 1 ? 'they’re' : 'it’s'} left out of your trend. Fix ${odd.length > 1 ? 'them' : 'it'} in the Daily log, or tap “It’s right”.` });
@@ -1186,6 +1210,8 @@ function renderDashboard() {
     <div>Longest run<br><b>${fd(longest.km)} ${du()}</b> <span class="pill">${fmtShort(longest.d)}</span></div>
     <div>Avg pace, last ${pr.length} runs<br><b>${pr.length ? fmtPace(avg(pr.map(p => p.y))) + '/' + du() : '—'}</b></div>` : '';
 
+  renderHealthDash(from);
+
   // sport
   $('#sportSec').classList.toggle('hidden', !sp);
   if (sp) {
@@ -1260,7 +1286,7 @@ function renderAll() {
   document.querySelectorAll('.du').forEach(e => e.textContent = du());
   $('#demoBanner').classList.toggle('hidden', !S.demo);
   $('#demoBanner').innerHTML = S.demo ? `👀 <b>You're looking at demo data.</b> Have a click around. <button class="btn primary" id="leaveDemo">Start with my own data</button>` : '';
-  renderStats(); renderPlan(); renderLog(); renderStrava(); renderHevy(); renderSplit(); renderCheckin(); renderDashboard();
+  renderStats(); renderPlan(); renderLog(); renderStrava(); renderHevy(); renderHealthBox(); renderSplit(); renderCheckin(); renderDashboard();
 }
 
 /* =====================================================================
@@ -1462,6 +1488,13 @@ function buildWorkbook() {
   }));
   add('Check-ins', ciRows, ['Date','Week reviewed','Avg weight (kg)','Prev week avg (kg)','Trend (kg)','Rate (kg/wk)','Avg eaten','Avg target','Days logged','Gym','Sport','Run km','Lifts up','Lifts same','Lifts down','Adjustment (kcal)','New avg target','Energy','Hunger','Sleep','Gym feel','Notes'],
       [11,24,15,17,10,12,10,10,11,6,7,7,8,10,10,16,14,7,7,6,9,40]);
+  const hRows = Object.keys(S.health).sort().map(d => { const h = S.health[d], r1 = v => v == null ? '' : +(+v).toFixed(1);
+    return { Date: d, 'Sleep (h)': h.sleep ? r1(h.sleep.total) : '', 'Resting HR': r1(h.rhr), HRV: r1(h.hrv), Steps: h.steps ? Math.round(h.steps) : '',
+      'Active kcal': h.active ? Math.round(h.active) : '', 'Resting kcal': h.basal ? Math.round(h.basal) : '', 'Exercise min': h.exMin ? Math.round(h.exMin) : '',
+      'VO2 max': r1(h.vo2), 'SpO2 %': r1(h.spo2), 'Resp. rate': r1(h.rr), 'Weight (kg)': h.weight || '', 'Body fat %': h.bf || '',
+      Calories: h.kcal || '', Protein: h.mac ? h.mac.p : '', Carbs: h.mac ? h.mac.c : '', Fat: h.mac ? h.mac.f : '' }; });
+  if (hRows.length) add('Health', hRows, ['Date','Sleep (h)','Resting HR','HRV','Steps','Active kcal','Resting kcal','Exercise min','VO2 max','SpO2 %','Resp. rate','Weight (kg)','Body fat %','Calories','Protein','Carbs','Fat'],
+      [11,9,10,7,8,10,11,11,8,7,9,11,10,9,8,7,6]);
   add('Settings', setRows, ['Key','Setting','Value'], [14,60,12]);
   // Full data as JSON (split to fit Excel's 32k-char cell limit) so a restore is lossless.
   const json = JSON.stringify(S), chunks = [];
@@ -1616,7 +1649,7 @@ async function stravaSync() {
     let kcal = S.acts[a.id] && S.acts[a.id].kcal;
     // Calories are only on the detailed activity; cap per sync to stay under Strava's rate limit (newest first).
     if (kcal == null && details < 60 && d >= iso(addDays(new Date(), -120))) { try { kcal = (await stravaGet('/activities/' + a.id)).calories || 0; details++; } catch (e) {} }
-    S.acts[a.id] = { d, type: a.sport_type || a.type, name: a.name, km: +(a.distance / 1000).toFixed(2), min: Math.round(a.moving_time / 60), kcal: kcal == null ? null : Math.round(kcal) };
+    S.acts[a.id] = { d, start: Date.parse(a.start_date) || null, type: a.sport_type || a.type, name: a.name, km: +(a.distance / 1000).toFixed(2), min: Math.round(a.moving_time / 60), kcal: kcal == null ? null : Math.round(kcal) };
   }
   applyImports();
   SV.lastSync = Math.floor(Date.now() / 1000); SV.backfilled = true; saveSV();
@@ -1631,7 +1664,7 @@ async function runSync(silent) {
 function watchAverages() {
   const b = { gym: [], train: [], match: [], runPerKm: [] };
   for (const a of Object.values(S.acts)) {
-    if (!(a.kcal > 0)) continue;
+    if (!(a.kcal > 0) || a.dup) continue;
     const k = stravaKind(a, a.d);
     if (k === 'run') { if (a.km > 0.5) b.runPerKm.push(a.kcal / a.km); }
     else if (k) b[k].push(a.kcal);
@@ -1783,6 +1816,283 @@ function renderHevy() {
 }
 
 /* =====================================================================
+   Apple Health — Health Auto Export (iPhone) → your relay (Cloudflare Worker) → Recomp
+   ===================================================================== */
+const XKEY = 'recomp.health';                // kept separate so the relay key never ends up in backups
+let HX = (() => { try { return JSON.parse(localStorage.getItem(XKEY)) || {}; } catch (e) { return {}; } })();
+const saveHX = () => { try { localStorage.setItem(XKEY, JSON.stringify(HX)); } catch (e) {} };
+const hxMsg = (t, cls = '') => { $('#hxMsg').innerHTML = t ? `<span class="${cls}">${t}</span>` : ''; };
+const relayUrl = (u = HX.url) => String(u || '').trim().replace(/\/+$/, '').replace(/\/(ingest|batches)$/, '');
+const RELAY_CODE_URL = 'https://github.com/Aaron-Darcy/Recomp/blob/main/tools/health-relay-worker.js';
+
+async function relayGet(path, url = relayUrl(), key = HX.key) {
+  let r;
+  try { r = await fetch(url + path, { headers: { 'X-API-Key': key } }); }
+  catch (e) { throw new Error('Can’t reach your relay. Check the worker URL (it looks like https://recomp-health.yourname.workers.dev).'); }
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401) throw new Error('The relay rejected the key. It must match the RELAY_KEY secret in Cloudflare exactly.');
+  if (!r.ok) throw new Error(j.error || 'Relay error ' + r.status);
+  return j;
+}
+
+// Health Auto Export metric names (normalised) → [field Recomp stores, how a day's values combine]
+const hkey = n => String(n || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+const HMAP = {
+  weight_body_mass: ['weight', 'first'], body_mass: ['weight', 'first'], weight: ['weight', 'first'],
+  body_fat_percentage: ['bf', 'first'],
+  dietary_energy: ['kcal', 'sum'], dietary_energy_consumed: ['kcal', 'sum'],
+  protein: ['p', 'sum'], dietary_protein: ['p', 'sum'],
+  carbohydrates: ['c', 'sum'], dietary_carbohydrates: ['c', 'sum'],
+  total_fat: ['f', 'sum'], dietary_fat_total: ['f', 'sum'],
+  active_energy: ['active', 'sum'], active_energy_burned: ['active', 'sum'],
+  basal_energy_burned: ['basal', 'sum'], resting_energy: ['basal', 'sum'],
+  step_count: ['steps', 'sum'], apple_exercise_time: ['exMin', 'sum'], walking_running_distance: ['walkKm', 'sum'],
+  resting_heart_rate: ['rhr', 'avg'], heart_rate_variability: ['hrv', 'avg'], heart_rate_variability_sdnn: ['hrv', 'avg'],
+  walking_heart_rate_average: ['walkHr', 'avg'], vo2_max: ['vo2', 'avg'],
+  respiratory_rate: ['rr', 'avg'], blood_oxygen_saturation: ['spo2', 'avg'], oxygen_saturation: ['spo2', 'avg'],
+  apple_sleeping_wrist_temperature: ['wristT', 'avg']
+};
+function hUnit(v, units, field) {
+  const u = String(units || '').toLowerCase();
+  if (/^kj/.test(u)) return v / 4.184;
+  if (u === 'lb' || u === 'lbs') return v / LB;
+  if (u === 'mi') return v * MI;
+  if (u === 'm' && (field === 'walkKm' || field === 'km')) return v / 1000;
+  if ((field === 'bf' || field === 'spo2') && v <= 1) return v * 100;
+  return v;
+}
+const haeTime = t => Date.parse(String(t || '').replace(' ', 'T').replace(/ ([+-]\d{2}):?(\d{2})$/, '$1:$2'));
+function haeType(name) {
+  const n = String(name || '');
+  return /run/i.test(n) ? 'Run' : /soccer|football/i.test(n) ? 'Soccer' : /strength|weight|crossfit|functional/i.test(n) ? 'WeightTraining'
+    : /cycl|bike/i.test(n) ? 'Ride' : /walk/i.test(n) ? 'Walk' : /hik/i.test(n) ? 'Hike' : n.replace(/\s+/g, '') || 'Workout';
+}
+// One Health Auto Export JSON payload → { days: {date: {field: value, sleep}}, workouts: [...] }
+function parseHAE(j) {
+  const data = (j && j.data) || j || {}, days = {}, acc = {};
+  for (const m of data.metrics || []) {
+    const n = hkey(m.name), units = m.units;
+    if (n === 'sleep_analysis') {
+      for (const p of m.data || []) {
+        const d = anyDate(String(p.date || p.sleepEnd || '')); if (!d) continue;
+        const h = x => +x > 0 ? +x : 0, tot = h(p.totalSleep) || h(p.asleep) || (h(p.core) + h(p.deep) + h(p.rem));
+        if (!tot) continue;
+        const s = ((days[d] ||= {}).sleep ||= { total: 0, deep: 0, rem: 0, core: 0, awake: 0, inBed: 0 });
+        s.total += tot; s.deep += h(p.deep); s.rem += h(p.rem); s.core += h(p.core); s.awake += h(p.awake); s.inBed += h(p.inBed);
+      }
+      continue;
+    }
+    if (n === 'heart_rate') {
+      for (const p of m.data || []) {
+        const d = anyDate(String(p.date || '')); if (!d) continue;
+        const o = (acc[d + '|hr'] ||= { min: Infinity, max: 0, s: 0, k: 0 });
+        if (+p.Min) o.min = Math.min(o.min, +p.Min); if (+p.Max) o.max = Math.max(o.max, +p.Max);
+        const a = +p.Avg || +p.qty; if (a) { o.s += a; o.k++; }
+      }
+      continue;
+    }
+    const map = HMAP[n]; if (!map) continue;
+    const [field, how] = map;
+    for (const p of m.data || []) {
+      const d = anyDate(String(p.date || '')), raw = p.qty != null ? p.qty : p.Avg;
+      if (!d || raw == null || isNaN(+raw)) continue;
+      const v = hUnit(+raw, units, field), o = (acc[d + '|' + field] ||= { s: 0, k: 0, first: null, firstT: null, how });
+      o.s += v; o.k++;
+      const t = String(p.date);
+      if (o.firstT == null || t < o.firstT) { o.first = v; o.firstT = t; }
+    }
+  }
+  for (const [key, o] of Object.entries(acc)) {
+    const [d, field] = key.split('|'), day = (days[d] ||= {});
+    if (field === 'hr') { if (o.k) day.hrAvg = o.s / o.k; if (o.max) day.hrMax = o.max; if (o.min !== Infinity) day.hrMin = o.min; continue; }
+    day[field] = o.how === 'sum' ? o.s : o.how === 'avg' ? o.s / o.k : o.first;
+  }
+  const workouts = [];
+  for (const w of data.workouts || []) {
+    const st = haeTime(w.start), d = anyDate(String(w.start || ''));
+    if (isNaN(st) || !d) continue;
+    const q = x => x == null ? null : typeof x === 'object' ? x : { qty: +x };
+    const e = q(w.activeEnergyBurned || w.activeEnergy), dist = q(w.distance);
+    const dur = +w.duration > 0 ? +w.duration : ((haeTime(w.end) - st) / 1000 || 0);
+    workouts.push({ id: 'health:' + new Date(st).toISOString().slice(0, 16), src: 'health', d, start: st, type: haeType(w.name), name: String(w.name || 'Workout'),
+      km: dist && +dist.qty > 0 ? +hUnit(+dist.qty, dist.units || 'km', 'km').toFixed(2) : 0,
+      min: Math.round(dur / 60), kcal: e && +e.qty > 0 ? Math.round(hUnit(+e.qty, e.units, 'kcal')) : null });
+  }
+  return { days, workouts };
+}
+// Newest batch wins for each day/field. Weights and calories you typed yourself are never overwritten.
+function mergeHealth(parsed) {
+  const start = startDate(), today = todayIso(), r = { days: 0, workouts: 0 };
+  for (const [d, v] of Object.entries(parsed.days)) {
+    if (d > today) continue;
+    const { kcal, p, c, f, weight, bf, ...rest } = v, h = (S.health[d] ||= {});
+    Object.assign(h, rest);
+    if (kcal > 0) h.kcal = Math.round(kcal);
+    if (p != null || c != null || f != null) h.mac = { p: Math.round(p || 0), c: Math.round(c || 0), f: Math.round(f || 0) };
+    if (weight > 0) h.weight = +weight.toFixed(2);
+    if (bf > 0) h.bf = +bf.toFixed(1);
+    r.days++;
+    if (d < start) continue;
+    const l = S.logs[d];
+    if (h.weight && (!l || !(+l.weight > 0) || l.wSrc === 'hevy' || l.wSrc === 'health')) {
+      const L = logFor(d);
+      if (+L.weight !== h.weight) delete L.wOk;
+      L.weight = h.weight; L.wSrc = 'health';
+    }
+    if (h.kcal && (!l || l.kSrc !== 'manual')) { const L = logFor(d); L.kcal = h.kcal; L.kSrc = 'health'; if (h.mac) L.mac = h.mac; }
+  }
+  for (const w of parsed.workouts) { if (w.d <= today) { S.acts[w.id] = w; r.workouts++; } }
+  return r;
+}
+// A workout that's on Strava and in Health (watch → both) only counts once: Strava's copy is kept.
+function markHealthDups() {
+  const others = Object.values(S.acts).filter(a => a.src !== 'health');
+  for (const a of Object.values(S.acts)) if (a.src === 'health') {
+    const k = stravaKind(a, a.d);
+    a.dup = others.some(s => s.d === a.d && (
+      (s.start && a.start && Math.abs(s.start - a.start) < 5 * 6e4) ||
+      (s.km > 0 && a.km > 0 && Math.abs(s.km - a.km) < 0.15) ||                                    // same watch workout: same distance…
+      (s.kcal > 0 && a.kcal > 0 && Math.abs(s.kcal - a.kcal) <= Math.max(10, 0.03 * s.kcal)) ||   // …or same calories, even if retyped
+
+      (stravaKind(s, s.d) === k && (s.start && a.start ? Math.abs(s.start - a.start) < 15 * 6e4 : (!s.min || !a.min || Math.abs(s.min - a.min) <= 10)))));
+  }
+}
+let hxBusy = false;
+async function healthSync(loud) {
+  if (!HX.url || !HX.key || hxBusy) return;
+  hxBusy = true;
+  let n = 0, days = 0, wk = 0, bad = 0;
+  try {
+    for (let i = 0; i < 50; i++) {
+      const j = await relayGet('/batches?after=' + encodeURIComponent(HX.after || ''));
+      for (const b of j.batches || []) {
+        try { const r = mergeHealth(parseHAE(JSON.parse(b.body))); days += r.days; wk += r.workouts; n++; }
+        catch (e) { bad++; }
+        HX.after = b.key; HX.lastBatch = b.ts;
+      }
+      HX.stored = j.stored;
+      if (!j.more) break;
+    }
+    HX.lastCheck = Date.now(); HX.err = ''; saveHX();
+    if (n) { applyImports(); save(); renderAll(); if ($('#lDate').value === todayIso()) fillLogForm(todayIso()); }
+    if (loud) hxMsg(n ? `Received ${n} update${n === 1 ? '' : 's'} from your iPhone (${days} day summaries, ${wk} workouts)${bad ? `, ${bad} unreadable` : ''}.`
+      : 'Up to date. Nothing new from Health Auto Export since the last check.', 'good');
+  } catch (e) { HX.err = e.message; saveHX(); if (loud) hxMsg(esc(e.message), 'warn'); }
+  hxBusy = false;
+  renderHealthBox();
+}
+function newRelayKey() { const a = new Uint8Array(24); crypto.getRandomValues(a); return [...a].map(x => x.toString(16).padStart(2, '0')).join(''); }
+function renderHealthBox() {
+  const box = $('#healthBox'); if (!box) return;
+  const key = HX.key || HX.draftKey || (HX.draftKey = newRelayKey(), saveHX(), HX.draftKey), url = relayUrl() || 'https://recomp-health.<you>.workers.dev';
+  const haeSteps = `<ol class="steps">
+      <li>In <b>Health Auto Export</b> go to <b>Automations → +</b> and choose <b>REST API</b>.</li>
+      <li><b>URL:</b> <code>${esc(url)}/ingest</code></li>
+      <li><b>Headers:</b> add one. Key <code>X-API-Key</code>, value <code>${esc(key)}</code> <button class="link" data-copy="${esc(key)}">copy key</button></li>
+      <li><b>Data:</b> Health Metrics (select all) + Workouts. <b>Format:</b> JSON, version 2. <b>Summarize data:</b> on, by Day. <b>Date range:</b> Default (yesterday + today).</li>
+      <li><b>Sync cadence:</b> every 1 hour. Turn the automation on, then use its manual sync once to send the first update.</li>
+    </ol><p>The exact labels in Health Auto Export may differ slightly. Your phone only syncs while it's unlocked, so updates arrive through the day as you use it.</p>`;
+  if (!HX.url || !HX.key) {
+    box.innerHTML = `<details class="help" open><summary><b>1. Set up your relay on Cloudflare</b> (free, one-off)</summary>
+      <ol class="steps">
+        <li>Sign up or log in at <a href="https://dash.cloudflare.com" target="_blank" rel="noopener">dash.cloudflare.com</a>.</li>
+        <li><b>Workers &amp; Pages → Create → Create Worker</b>. Name it <code>recomp-health</code>, then <b>Deploy</b>.</li>
+        <li>Click <b>Edit code</b>, delete the sample, paste in the relay code from <a href="${RELAY_CODE_URL}" target="_blank" rel="noopener">tools/health-relay-worker.js</a> (Raw → copy all), then <b>Deploy</b>.</li>
+        <li><b>Storage &amp; Databases → KV → Create</b> a namespace called <code>recomp-health</code>.</li>
+        <li>Back in your worker: <b>Settings → Bindings → Add → KV namespace</b>. Variable name <code>HEALTH</code>, pick the namespace.</li>
+        <li><b>Settings → Variables and Secrets → Add</b>. Type <b>Secret</b>, name <code>RELAY_KEY</code>, value: <code>${esc(key)}</code> <button class="link" data-copy="${esc(key)}">copy</button></li>
+        <li>Copy your worker's address (like <code>https://recomp-health.yourname.workers.dev</code>) into the box below.</li>
+      </ol></details>
+      <div class="row" style="margin:8px 0"><input id="hxUrl" placeholder="https://recomp-health.yourname.workers.dev" value="${esc(HX.url || '')}" style="flex:1;min-width:240px">
+        <input id="hxKey" type="password" value="${esc(key)}" size="20" aria-label="Relay key"><button class="btn primary" id="hxSave">Save &amp; test</button></div>
+      <details class="help"><summary><b>2. Point Health Auto Export at it</b></summary>${haeSteps}</details>`;
+    return;
+  }
+  const last = HX.lastBatch ? new Date(HX.lastBatch).toLocaleString() : 'nothing yet';
+  const days = Object.keys(S.health).sort();
+  box.innerHTML = `<div class="row"><span class="pill"><span class="${HX.err ? 'warn' : 'good'}">●</span> Relay connected</span>
+      <span class="help">Last update from your iPhone: ${last}${days.length ? ` · ${days.length} days of Health data (${fmtShort(days[0])} – ${fmtShort(days[days.length - 1])})` : ''}</span>
+      <button class="btn primary" id="hxCheck">Check now</button><button class="btn" id="hxForget">Disconnect</button></div>
+    ${HX.err ? `<p class="status warn">${esc(HX.err)}</p>` : ''}
+    <details class="help"${HX.lastBatch ? '' : ' open'}><summary><b>Health Auto Export settings</b>${HX.lastBatch ? '' : ' (waiting for the first update)'}</summary>${haeSteps}</details>
+    <p class="help">Recomp uses Apple Health for: weigh-ins and calories/macros (anything you type yourself always wins), workouts with their calories (a workout that's also on Strava only counts once), and sleep, heart, steps and VO2 max for the Recovery &amp; heart dashboard and your check-in.</p>`;
+}
+
+/* ---------- Health in the check-in, insights and dashboard ---------- */
+const hAvg = (ds, f) => { const v = ds.map(d => f(S.health[d] || {})).filter(x => x != null && !isNaN(x) && x > 0); return v.length ? avg(v) : null; };
+const proteinTarget = () => macros(0).p;
+function healthWeek(days) {
+  if (!days.some(d => S.health[d])) return null;
+  const pd = days.filter(d => S.health[d] && S.health[d].mac);
+  return { sleep: hAvg(days, h => h.sleep && h.sleep.total), rhr: hAvg(days, h => h.rhr), hrv: hAvg(days, h => h.hrv), steps: hAvg(days, h => h.steps),
+    pDays: pd.length ? pd.filter(d => S.health[d].mac.p >= proteinTarget() * 0.95).length : null, pOf: pd.length };
+}
+const daysBack = (n, from = 0) => [...Array(n)].map((_, i) => iso(addDays(new Date(), -(i + from))));
+function recoveryState() {
+  const recent = daysBack(3, 1), base = daysBack(21, 8);   // last 3 full days vs the 3 weeks before
+  const r3 = hAvg(recent, h => h.rhr), rb = hAvg(base, h => h.rhr), v3 = hAvg(recent, h => h.hrv), vb = hAvg(base, h => h.hrv);
+  return { rhrUp: r3 != null && rb != null ? r3 - rb : null, hrvDrop: v3 != null && vb != null ? (vb - v3) / vb : null };
+}
+function healthInsights() {
+  const out = [], w7 = daysBack(7, 1), s7 = daysBack(7, 0);   // sleep is dated by the morning you wake up, so it includes today
+  if (!Object.keys(S.health).some(d => d >= iso(addDays(new Date(), -14)))) return out;
+  const rs = recoveryState();
+  if (rs.rhrUp != null || rs.hrvDrop != null) {
+    const bad = (rs.rhrUp != null && rs.rhrUp > 5) || (rs.hrvDrop != null && rs.hrvDrop > 0.15);
+    out.push({ ok: !bad, t: bad
+      ? `Recovery: ${rs.rhrUp > 5 ? `resting HR is ${Math.round(rs.rhrUp)} bpm above your usual` : ''}${rs.rhrUp > 5 && rs.hrvDrop > 0.15 ? ' and ' : ''}${rs.hrvDrop > 0.15 ? `HRV is ${Math.round(rs.hrvDrop * 100)}% below normal` : ''} over the last 3 days. Consider an easier session, extra sleep and plenty of food today.`
+      : 'Recovery: resting heart rate and HRV are in your normal range.' });
+  }
+  const sl = hAvg(s7, h => h.sleep && h.sleep.total);
+  if (sl != null) out.push({ ok: sl >= 7, t: `Sleep: ${sl.toFixed(1)} h a night over the last week${sl < 7 ? '. Under 7 h slows recovery and makes hunger and gains harder to manage.' : '.'}` });
+  const pd = w7.filter(d => S.health[d] && S.health[d].mac);
+  if (pd.length >= 3) { const hit = pd.filter(d => S.health[d].mac.p >= proteinTarget() * 0.95).length;
+    out.push({ ok: hit >= pd.length - 1, t: `Protein: hit ${proteinTarget()} g on ${hit} of ${pd.length} logged days this week${hit < pd.length - 1 ? '. Lifts recover on protein, so add a shake or yoghurt on the low days.' : '.'}` }); }
+  const st = hAvg(daysBack(14, 1), h => h.steps);
+  if (st != null) {
+    const sug = st < 5000 ? 1.25 : st < 8000 ? 1.3 : st < 12000 ? 1.4 : 1.5;
+    if (Math.abs(sug - S.settings.factor) >= 0.05) out.push({ ok: null, t: `Daily activity: you average ${Math.round(st).toLocaleString()} steps, which fits a daily-life factor of about ${sug} (yours is ${S.settings.factor}). Change it in Settings if that looks right, or let the check-ins correct it.` });
+  }
+  const vo = Object.keys(S.health).filter(d => S.health[d].vo2).sort();
+  if (vo.length >= 2 && dayNum(vo[vo.length - 1]) - dayNum(vo[0]) >= 21) {
+    const a = S.health[vo[0]].vo2, b = S.health[vo[vo.length - 1]].vo2;
+    out.push({ ok: b >= a, t: `VO2 max: ${b.toFixed(1)} (${sgn((b - a).toFixed(1))} since ${fmtShort(vo[0])}).` });
+  }
+  return out;
+}
+function renderHealthDash(from) {
+  const ds = Object.keys(S.health).filter(d => d >= from).sort(), sec = $('#healthSec');
+  sec.classList.toggle('hidden', !ds.length);
+  if (!ds.length) return;
+  const H = d => S.health[d], w7 = daysBack(7, 1);
+  const tile = (lbl, val, cmp) => `<div class="tile"><div class="lbl">${lbl}</div><div class="val">${val}</div><div class="cmp">${cmp}</div></div>`;
+  const sl = hAvg(daysBack(7, 0), h => h.sleep && h.sleep.total), rhr = hAvg(w7, h => h.rhr), hrv = hAvg(w7, h => h.hrv), st = hAvg(w7, h => h.steps);
+  const vo = ds.filter(d => H(d).vo2), rs = recoveryState();
+  $('#hTiles').innerHTML =
+    tile('Sleep (7-day avg)', sl != null ? sl.toFixed(1) + ' h' : '—', sl != null ? (sl >= 7 ? '<span class="good">✓ enough</span>' : '<span class="warn">under 7 h</span>') : 'no sleep data') +
+    tile('Resting HR', rhr != null ? Math.round(rhr) + ' bpm' : '—', rs.rhrUp != null ? `${sgn(Math.round(rs.rhrUp))} vs usual` : '7-day avg') +
+    tile('HRV', hrv != null ? Math.round(hrv) + ' ms' : '—', rs.hrvDrop != null ? `${sgn(Math.round(-rs.hrvDrop * 100))}% vs usual` : '7-day avg') +
+    tile('Steps', st != null ? Math.round(st).toLocaleString() : '—', 'daily avg, last 7 days') +
+    tile('VO2 max', vo.length ? H(vo[vo.length - 1]).vo2.toFixed(1) : '—', vo.length ? `latest ${fmtShort(vo[vo.length - 1])}` : 'no data yet');
+  const series = f => ds.filter(d => f(H(d)) > 0).map(d => ({ x: dayNum(d), y: f(H(d)), d }));
+  const rolling = pts => pts.map(p => ({ x: p.x, y: avg(pts.filter(q => q.x <= p.x && q.x > p.x - 7).map(q => q.y)) }));
+  const dayTip = (pts, fmt) => x => { const p = pts.find(q => q.x === x); return `<b>${DAYS[dayIdx(parse(p.d))]} ${fmtShort(p.d)}</b><br>${fmt(p.y)}`; };
+  const rh = series(h => h.rhr), hv = series(h => h.hrv), v2 = series(h => h.vo2);
+  lineChart($('#cRhr'), { label: 'Resting heart rate', height: 190, empty: 'No resting heart rate yet.', series: [{ type: 'dots', pts: rh }, { type: 'line', pts: rolling(rh) }], yFmt: v => Math.round(v), tip: dayTip(rh, v => Math.round(v) + ' bpm') });
+  lineChart($('#cHrv'), { label: 'HRV', height: 190, empty: 'No HRV yet.', series: [{ type: 'dots', pts: hv }, { type: 'line', pts: rolling(hv) }], yFmt: v => Math.round(v), tip: dayTip(hv, v => Math.round(v) + ' ms') });
+  lineChart($('#cVo2'), { label: 'VO2 max', height: 190, empty: 'No VO2 max yet (your watch estimates it from outdoor walks and runs).', series: [{ type: 'line', pts: v2 }, { type: 'dots', pts: v2, color: 'var(--accent)' }], yFmt: v => v.toFixed(1), tip: dayTip(v2, v => v.toFixed(1)) });
+  const dayLabel = d => parse(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  barChart($('#cSleep'), { label: 'Sleep', bars: ds.map(d => { const s = H(d).sleep; return { label: dayLabel(d), v: s ? s.total : 0,
+    tip: s ? `<b>${fmtShort(d)}</b><br>${s.total.toFixed(1)} h asleep${s.deep ? `<br>deep ${s.deep.toFixed(1)} · REM ${s.rem.toFixed(1)} · core ${s.core.toFixed(1)}` : ''}` : `${fmtShort(d)}: no data` }; }),
+    yFmt: v => +v.toFixed(1), empty: 'No sleep data yet.' });
+  barChart($('#cSteps'), { label: 'Steps', bars: ds.map(d => ({ label: dayLabel(d), v: H(d).steps || 0, tip: `<b>${fmtShort(d)}</b><br>${Math.round(H(d).steps || 0).toLocaleString()} steps` })), yFmt: v => v >= 1000 ? (v / 1000) + 'k' : Math.round(v), empty: 'No step data yet.' });
+  const pt = proteinTarget();
+  barChart($('#cProtein'), { label: 'Protein', bars: ds.map(d => { const m = H(d).mac; return { label: dayLabel(d), v: m ? m.p : 0, tick: m ? pt : 0,
+    tip: m ? `<b>${fmtShort(d)}</b><br>Protein ${m.p} g (target ${pt})<br>Carbs ${m.c} g · Fat ${m.f} g${H(d).kcal ? `<br>${H(d).kcal} kcal` : ''}` : `${fmtShort(d)}: nothing logged` }; }),
+    yFmt: v => Math.round(v), empty: 'No food data yet. MyFitnessPal Premium writes it to Apple Health.' });
+}
+
+/* =====================================================================
    Strong CSV import
    ===================================================================== */
 function parseCSV(text) {
@@ -1851,9 +2161,11 @@ function applyImports() {
     l.gym = 1;
     l.strong = { name: o.names.join(' + '), sets: o.sets, volume: Math.round(o.volume), exercises: o.ex.size, src: o.src };
   }
+  markHealthDups();
+  for (const l of Object.values(S.logs)) if (l.strava) for (const id of Object.keys(l.strava)) if (S.acts[id] && S.acts[id].dup) delete l.strava[id];
   for (const [id, a] of Object.entries(S.acts)) {
-    if (a.d < start || a.d > today) continue;
-    (logFor(a.d).strava ||= {})[id] = { type: a.type, name: a.name, km: a.km, min: a.min, kcal: a.kcal };
+    if (a.d < start || a.d > today || a.dup) continue;
+    (logFor(a.d).strava ||= {})[id] = { type: a.type, name: a.name, km: a.km, min: a.min, kcal: a.kcal, src: a.src || 'strava' };
   }
   for (const d of Object.keys(S.logs)) if (S.logs[d].strava) applyStrava(d);
   return Object.keys(days).length;
@@ -1867,7 +2179,7 @@ function showTab(t) {
   if (t === 'dash') renderDashboard();
   window.scrollTo({ top: 0 });
 }
-$('#stats').addEventListener('click', async e => { if (e.target.id === 'wiCheck') { e.target.textContent = 'Checking…'; await refreshWeighIns(true); renderStats(); } });
+$('#stats').addEventListener('click', async e => { if (e.target.id === 'wiCheck') { e.target.textContent = 'Checking…'; await Promise.all([refreshWeighIns(true), healthSync(true)]); renderStats(); } });
 $('#tabs').addEventListener('click', e => { if (e.target.dataset.t) showTab(e.target.dataset.t); });
 // Scrolling the page over a focused number box would silently change its value.
 document.addEventListener('wheel', e => { if (e.target.type === 'number' && e.target === document.activeElement) e.target.blur(); }, { passive: true });
@@ -1934,7 +2246,7 @@ $('#week').addEventListener('change', e => {
 $('#lDate').addEventListener('change', e => fillLogForm(e.target.value));
 ['#lGym','#lTrain','#lMatch','#lRun'].forEach(id => $(id).addEventListener('change', () => {
   const l = S.logs[$('#lDate').value];
-  if (!l || !l.kcal) $('#lKcal').value = targetFor({ ...formActs(), strava: l && l.strava }, undefined, $('#lDate').value); // keep target in sync until calories are saved
+  if (!l || !l.kcal) $('#lKcal').value = $('#lKcal').dataset.pre = targetFor({ ...formActs(), strava: l && l.strava }, undefined, $('#lDate').value); // keep target in sync until calories are saved
 }));
 $('#logForm').addEventListener('submit', e => {
   e.preventDefault();
@@ -1942,7 +2254,10 @@ $('#logForm').addEventListener('submit', e => {
   const wv = +$('#lWeight').value;
   const l = logFor(d), shown = l.weight ? +fw(l.weight, 2) : 0;
   if (wv !== shown) { l.weight = wv ? +wIn(wv).toFixed(3) : 0; delete l.wSrc; delete l.wOk; }   // edited here = manual from now on
-  Object.assign(l, { kcal: +$('#lKcal').value || 0, ...formActs() });
+  const kv = +$('#lKcal').value || 0;
+  if (String($('#lKcal').value) !== String($('#lKcal').dataset.pre)) { l.kcal = kv; l.kSrc = 'manual'; delete l.mac; }   // typed = manual, wins over Health
+  else if (!l.kSrc) l.kcal = kv;
+  Object.assign(l, formActs());
   save(); renderAll();
   fillLogForm(d);
 });
@@ -2052,6 +2367,26 @@ $('#strongFile').addEventListener('change', async e => {
   catch (err) { $('#strongMsg').innerHTML = `<span class="warn">${esc(err.message)}</span>`; }
 });
 
+// Apple Health
+$('#healthBox').addEventListener('click', async e => {
+  const t = e.target;
+  if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); t.textContent = 'copied ✓'; } catch (err) { prompt('Copy this:', t.dataset.copy); } return; }
+  if (t.id === 'hxSave') {
+    const url = relayUrl($('#hxUrl').value), key = $('#hxKey').value.trim();
+    if (!/^https:\/\//.test(url)) return hxMsg('Paste your worker address, starting with https://', 'warn');
+    if (!key) return hxMsg('The key box is empty.', 'warn');
+    t.disabled = true; hxMsg('Testing the relay…');
+    try {
+      const j = await relayGet('/batches?after=batch:9', url, key);   // a no-op read that still checks the key and storage
+      HX = { url, key, after: '' }; saveHX(); renderHealthBox();
+      hxMsg(j.stored ? `Connected ✓ Collecting ${j.stored} waiting update${j.stored === 1 ? '' : 's'}…` : 'Connected ✓ Now set up Health Auto Export (step 2) and send the first update.', 'good');
+      if (j.stored) await healthSync(true);
+    } catch (err) { hxMsg(esc(err.message), 'warn'); t.disabled = false; }
+  }
+  if (t.id === 'hxCheck') { t.disabled = true; await healthSync(true); }
+  if (t.id === 'hxForget' && confirm('Disconnect Apple Health? Data already collected stays in Recomp.')) { HX = { draftKey: HX.key }; saveHX(); hxMsg(''); renderHealthBox(); }
+});
+
 // Hevy
 $('#hevyBox').addEventListener('click', async e => {
   const id = e.target.id;
@@ -2112,11 +2447,13 @@ initBackup();
 if (!S.settings.onboarded) openOnboarding();
 if (SV.refresh && (!SV.lastSync || Date.now() / 1000 - SV.lastSync > 3 * 3600)) runSync(true);
 if (HV.key && (!HV.lastSync || Date.now() - HV.lastSync > 3 * 3600e3)) runHevySync(true);   // full sync (includes weigh-ins)
-else refreshWeighIns();                                                                        // otherwise just this morning's weigh-in
+else refreshWeighIns();
+healthSync();                                                                        // otherwise just this morning's weigh-in
 // Tab left open overnight? Check for a new weigh-in when you come back to it.
 const wiStale = () => Date.now() - (HV.lastWeights || 0) > 10 * 6e4;
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && wiStale()) refreshWeighIns(); });
-window.addEventListener('focus', () => { if (wiStale()) refreshWeighIns(); });
+const hxStale = () => Date.now() - (HX.lastCheck || 0) > 10 * 6e4;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState !== 'visible') return; if (wiStale()) refreshWeighIns(); if (hxStale()) healthSync(); });
+window.addEventListener('focus', () => { if (wiStale()) refreshWeighIns(); if (hxStale()) healthSync(); });
 </script>
 </body>
 </html>

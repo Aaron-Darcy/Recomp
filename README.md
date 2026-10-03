@@ -74,13 +74,31 @@ The first sync pulls your whole workout history. After that, Recomp only fetches
 
 Moving from Strong? Hevy uses the same exercise names, so your Strong history and Hevy sessions line up. If you imported your Strong history into Hevy, Recomp spots the duplicates and keeps the Hevy copy. Your API key is stored in your browser only and never written to backups.
 
+## Connecting Apple Health (optional)
+
+Apple Health has no web API, so an iPhone app has to send the data. Recomp uses **[Health Auto Export](https://apps.apple.com/app/id1115567069)** (Premium) to post your Health data in the background to a tiny **relay you run for free on Cloudflare**, and Recomp collects it from there.
+
+- **What comes in:** sleep, resting heart rate, HRV, VO2 max, steps, active and resting energy, weight, food calories and macros (from any food app that writes to Health, e.g. MyFitnessPal Premium), and workouts with their calories.
+- **Your entries come first:** weights and calories you type yourself always win.
+- **No double counting:** a workout that's also on Strava only counts once.
+- **Where it shows up:** a **Recovery & heart** dashboard section, "eaten so far / left today", and sleep and recovery in the weekly check-in.
+
+**Setup (about 10 minutes, once):**
+1. Cloudflare: create a Worker, paste in [`tools/health-relay-worker.js`](tools/health-relay-worker.js), bind a KV namespace as `HEALTH`, and add a secret `RELAY_KEY`.
+2. Recomp: go to **Sync & backup → Apple Health**, enter the worker URL and key, then **Save & test**.
+3. Health Auto Export: add a **REST API** automation pointing at `<worker>/ingest` with header `X-API-Key: <key>`, JSON v2, daily summaries, hourly.
+
+Recomp walks you through each step and generates the key for you.
+
+**Privacy:** data goes only to your own Cloudflare account and expires there after 21 days. iOS only lets apps read Health while the phone is unlocked, so updates arrive through the day as you use your phone.
+
 ## Importing Strong (optional)
 
 In the Strong app, go to **Profile → Settings → Export Strong Data**, get the CSV onto your computer, then go to **Sync & backup → Import Strong CSV**. Re-importing only adds new workouts, so it never creates duplicates.
 
 ## Privacy
 
-Everything stays on your device: browser `localStorage`, plus any Excel or JSON backup you save. The only network calls are to Strava and Hevy, and only if you connect them.
+Everything stays on your device: browser `localStorage`, plus any Excel or JSON backup you save. The only network calls are to Strava, Hevy and your own Apple Health relay, and only if you connect them.
 
 ## Built with
 
