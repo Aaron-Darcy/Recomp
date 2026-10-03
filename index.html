@@ -433,12 +433,13 @@ function actKcal(a, w) {
   const s = S.settings;
   const perKm = s.runPerKm > 0 ? s.runPerKm : 0.9 * w;
   const sport = k => hasSport() && a[k] ? (watchKcal(a, k) ?? s[k]) : 0;
-  return (a.gym ? s.gym : 0) + sport('train') + sport('match') + (+a.run || 0) * perKm;
+  const runs = +a.run > 0 ? (watchKcal(a, 'run') ?? +a.run * perKm) : 0;   // watch calories when Strava has them, else per-km estimate
+  return (a.gym ? s.gym : 0) + sport('train') + sport('match') + runs;
 }
 // The plan for a day, upgraded with what Strava says actually happened (so past/today targets use real sessions).
 function withActual(a, d) {
   const l = S.logs[d];
-  return l && l.strava ? { ...a, train: a.train || l.train, match: a.match || l.match, strava: l.strava } : a;
+  return l && l.strava ? { ...a, train: a.train || l.train, match: a.match || l.match, run: l.run || a.run, strava: l.strava } : a;
 }
 function formulaTDEE(a, w) { return bmr(w) * S.settings.factor + actKcal(a, w); }
 
@@ -588,7 +589,8 @@ function renderPlan() {
   const today = todayIso(), sp = sportName();
   $('#week').innerHTML = plan.map((a, i) => {
     const d = iso(addDays(start, i)), act = withActual(a, d), k = targetFor(act, cal, d), m = macros(k), log = S.logs[d];
-    const watched = ['train', 'match'].map(kd => act[kd] && watchKcal(act, kd)).filter(Boolean);
+    const watched = [['train', sportEmoji()], ['match', sportEmoji()], ['run', '🏃']].map(([kd, ic]) => {
+      const v = (kd === 'run' ? +act.run > 0 : act[kd]) && watchKcal(act, kd); return v ? `${ic} ${v}` : null; }).filter(Boolean);
     const chip = (f, t, title) => `<button class="chip ${a[f] ? 'on' : ''}" data-i="${i}" data-f="${f}" title="${esc(title || t)}">${t}</button>`;
     return `<div class="day ${d === today ? 'today' : ''}">
       <h3>${DAYS[i]} <span class="date">${fmtShort(d)}</span></h3>
@@ -597,7 +599,7 @@ function renderPlan() {
       <label class="run">🏃 Run <input type="number" min="0" step="0.5" value="${a.run ? fd(a.run) : ''}" data-i="${i}" data-run placeholder="0"> ${du()}</label>
       <div class="kcal">${k}</div>
       <div class="mac">P ${m.p}g · C ${m.c}g · F ${m.f}g</div>
-      ${watched.length ? `<div class="mac" title="Uses your watch's calories from Strava instead of the flat estimate">⌚ ${sportEmoji()} ${sum(watched)} kcal (watch)</div>` : ''}
+      ${watched.length ? `<div class="mac" title="Uses your watch's calories from Strava instead of the estimate">⌚ ${watched.join(' · ')} kcal (watch)</div>` : ''}
       ${d >= startDate() && d < goalStart() ? '<div class="mac"><span class="pill">Maintenance</span></div>' : ''}
       ${log && log.kcal ? `<div class="logged">Logged ${log.kcal} kcal</div>` : ''}
     </div>`;
@@ -1584,14 +1586,20 @@ function stravaKind(a, d) {
   if (/WeightTraining|Crossfit|Workout/.test(t)) return 'gym';
   return null;
 }
+// Sets the day's ticks/run distance from Strava. l.sv remembers what Strava set, so if an activity's type changes
+// on Strava (e.g. a match recorded as a run, then fixed), the old tick/distance is cleared instead of double-counted.
 function applyStrava(d) {
-  const l = S.logs[d]; let run = 0, hasRun = false;
-  for (const a of Object.values(l.strava || {})) {
+  const l = S.logs[d], prev = l.sv || {}, now = {}, acts = Object.values(l.strava || {});
+  let run = 0, hasRun = false;
+  for (const a of acts) {
     const k = stravaKind(a, d);
     a.kind = k;   // remembered so watch calories can be matched to the session type
-    if (k === 'run') { run += a.km; hasRun = true; } else if (k) l[k] = 1;
+    if (k === 'run') { run += a.km; hasRun = true; } else if (k) { l[k] = 1; now[k] = 1; }
   }
-  if (hasRun) l.run = +run.toFixed(2);
+  for (const k of ['train', 'match', 'gym']) if (prev[k] && !now[k] && !(k === 'gym' && l.strong)) l[k] = 0;
+  if (hasRun) { l.run = +run.toFixed(2); now.run = 1; }
+  else if (prev.run || (+l.run > 0 && Math.abs(+l.run - sum(acts.map(a => +a.km || 0))) < 0.01)) l.run = 0;   // second test: data synced before l.sv existed
+  l.sv = now;
 }
 async function stravaSync() {
   // First sync pulls a year of history (for the dashboard); later syncs only look back a few days.
