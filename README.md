@@ -84,7 +84,11 @@ Apple Health has no web API, so an iPhone app has to send the data. Recomp uses 
 - **Where it shows up:** a **Recovery & heart** dashboard section, "eaten so far / left today", and sleep and recovery in the weekly check-in.
 
 **Setup (about 10 minutes, once):**
-1. Cloudflare: create a Worker, paste in [`tools/health-relay-worker.js`](tools/health-relay-worker.js), bind a KV namespace as `HEALTH`, and add a secret `RELAY_KEY`.
+1. Cloudflare (free plan):
+   - **Workers & Pages → Create application → Start with Hello World!**, name it `recomp-health`, then **Deploy**.
+   - **Edit code**: paste in [`tools/health-relay-worker.js`](tools/health-relay-worker.js), then **Deploy**.
+   - **Workers KV → Create instance**, then bind it to the worker as `HEALTH` (Bindings → Add binding → KV namespace).
+   - **Settings → Variables and Secrets**: add a secret `RELAY_KEY`.
 2. Recomp: go to **Sync & backup → Apple Health**, enter the worker URL and key, then **Save & test**.
 3. Health Auto Export: add a **REST API** automation pointing at `<worker>/ingest` with header `X-API-Key: <key>`, JSON v2, daily summaries, hourly.
 

@@ -1981,6 +1981,11 @@ async function healthSync(loud) {
   hxBusy = false;
   renderHealthBox();
 }
+let relayCode = null;   // fetched when the setup guide shows, so "Copy relay code" can copy instantly on click
+async function loadRelayCode() {
+  try { const r = await fetch(RELAY_CODE_URL.replace('github.com', 'raw.githubusercontent.com').replace('/blob/', '/')); if (r.ok) relayCode = await r.text(); } catch (e) {}
+  return relayCode;
+}
 function newRelayKey() { const a = new Uint8Array(24); crypto.getRandomValues(a); return [...a].map(x => x.toString(16).padStart(2, '0')).join(''); }
 function renderHealthBox() {
   const box = $('#healthBox'); if (!box) return;
@@ -1993,16 +1998,39 @@ function renderHealthBox() {
       <li><b>Sync cadence:</b> every 1 hour. Turn the automation on, then use its manual sync once to send the first update.</li>
     </ol><p>The exact labels in Health Auto Export may differ slightly. Your phone only syncs while it's unlocked, so updates arrive through the day as you use it.</p>`;
   if (!HX.url || !HX.key) {
-    box.innerHTML = `<details class="help" open><summary><b>1. Set up your relay on Cloudflare</b> (free, one-off)</summary>
+    if (!relayCode) loadRelayCode();
+    box.innerHTML = `<details class="help" open><summary><b>1. Set up your relay on Cloudflare</b> (free, one-off, ~10 min)</summary>
+      <p>Cloudflare calls a small program like this an <b>application</b> (a "Worker"). You'll make one, paste in Recomp's relay code, give it some storage and a password, and copy its web address back here.</p>
+      <p><b>A. Create the application</b></p>
       <ol class="steps">
-        <li>Sign up or log in at <a href="https://dash.cloudflare.com" target="_blank" rel="noopener">dash.cloudflare.com</a>.</li>
-        <li><b>Workers &amp; Pages → Create → Create Worker</b>. Name it <code>recomp-health</code>, then <b>Deploy</b>.</li>
-        <li>Click <b>Edit code</b>, delete the sample, paste in the relay code from <a href="${RELAY_CODE_URL}" target="_blank" rel="noopener">tools/health-relay-worker.js</a> (Raw → copy all), then <b>Deploy</b>.</li>
-        <li><b>Storage &amp; Databases → KV → Create</b> a namespace called <code>recomp-health</code>.</li>
-        <li>Back in your worker: <b>Settings → Bindings → Add → KV namespace</b>. Variable name <code>HEALTH</code>, pick the namespace.</li>
-        <li><b>Settings → Variables and Secrets → Add</b>. Type <b>Secret</b>, name <code>RELAY_KEY</code>, value: <code>${esc(key)}</code> <button class="link" data-copy="${esc(key)}">copy</button></li>
-        <li>Copy your worker's address (like <code>https://recomp-health.yourname.workers.dev</code>) into the box below.</li>
-      </ol></details>
+        <li>Sign up or log in at <a href="https://dash.cloudflare.com" target="_blank" rel="noopener">dash.cloudflare.com</a> (the free plan is enough).</li>
+        <li>In the left-hand menu open <b>Compute (Workers) → Workers &amp; Pages</b>, then click <b>Create application</b>.</li>
+        <li>Choose <b>Start with Hello World!</b> → <b>Get started</b>.</li>
+        <li>Name it <code>recomp-health</code> and click <b>Deploy</b>. It now shows a page saying it's live.</li>
+      </ol>
+      <p><b>B. Paste in the relay code</b></p>
+      <ol class="steps" start="5">
+        <li>Click <b>Edit code</b> (top right, or the <code>&lt;/&gt;</code> icon). An editor opens with a file called <code>worker.js</code>.</li>
+        <li><button class="btn" id="hxCopyCode">Copy relay code</button> then in that editor press <b>Ctrl+A</b> (select all) and <b>Ctrl+V</b> (paste over it).</li>
+        <li>Click <b>Deploy</b> (top right of the editor), then go back to the application's page.</li>
+      </ol>
+      <p><b>C. Give it storage</b></p>
+      <ol class="steps" start="8">
+        <li>In the left-hand menu open <b>Storage &amp; Databases → Workers KV</b>, click <b>Create instance</b> (older screens: <b>Create namespace</b>), name it <code>recomp-health</code>, then <b>Create</b>.</li>
+        <li>Go back to <b>Workers &amp; Pages → recomp-health</b>. Open the <b>Bindings</b> tab (on some screens: <b>Settings → Bindings</b>) and click <b>Add binding</b>.</li>
+        <li>Choose <b>KV namespace</b>. Set <b>Variable name</b> to exactly <code>HEALTH</code>, pick <code>recomp-health</code> from the list, then <b>Add binding</b>.</li>
+      </ol>
+      <p><b>D. Give it a password</b></p>
+      <ol class="steps" start="11">
+        <li>Still in recomp-health: <b>Settings → Variables and Secrets → Add</b>.</li>
+        <li>Type: <b>Secret</b>. Variable name: <code>RELAY_KEY</code>. Value: <code>${esc(key)}</code> <button class="link" data-copy="${esc(key)}">copy</button>. Then <b>Deploy</b> (or <b>Save</b>).</li>
+      </ol>
+      <p><b>E. Connect Recomp</b></p>
+      <ol class="steps" start="13">
+        <li>On the application's main page, copy its address under <b>Domains &amp; Routes</b> or the <b>Visit</b> link, like <code>https://recomp-health.yourname.workers.dev</code>.</li>
+        <li>Paste it into the box below and click <b>Save &amp; test</b>.</li>
+      </ol>
+      <p>Cloudflare renames buttons now and then. If one isn't there, look for the closest match. The three things that must be exact are the binding name <code>HEALTH</code>, the secret name <code>RELAY_KEY</code> and the key value.</p></details>
       <div class="row" style="margin:8px 0"><input id="hxUrl" placeholder="https://recomp-health.yourname.workers.dev" value="${esc(HX.url || '')}" style="flex:1;min-width:240px">
         <input id="hxKey" type="password" value="${esc(key)}" size="20" aria-label="Relay key"><button class="btn primary" id="hxSave">Save &amp; test</button></div>
       <details class="help"><summary><b>2. Point Health Auto Export at it</b></summary>${haeSteps}</details>`;
@@ -2371,6 +2399,16 @@ $('#strongFile').addEventListener('change', async e => {
 $('#healthBox').addEventListener('click', async e => {
   const t = e.target;
   if (t.dataset.copy) { try { await navigator.clipboard.writeText(t.dataset.copy); t.textContent = 'copied ✓'; } catch (err) { prompt('Copy this:', t.dataset.copy); } return; }
+  if (t.id === 'hxCopyCode') {
+    t.textContent = 'Copying…';
+    try {
+      const code = relayCode || await loadRelayCode();
+      if (!code) throw new Error();
+      await Promise.race([navigator.clipboard.writeText(code), new Promise((_, no) => setTimeout(no, 3000))]);
+      t.textContent = 'Copied ✓ now paste it in Cloudflare';
+    } catch (err) { t.textContent = 'Copy relay code'; window.open(RELAY_CODE_URL.replace('/blob/', '/raw/'), '_blank'); hxMsg('Couldn’t copy automatically, so the code opened in a new tab. Press Ctrl+A then Ctrl+C there.', 'warn'); }
+    return;
+  }
   if (t.id === 'hxSave') {
     const url = relayUrl($('#hxUrl').value), key = $('#hxKey').value.trim();
     if (!/^https:\/\//.test(url)) return hxMsg('Paste your worker address, starting with https://', 'warn');
