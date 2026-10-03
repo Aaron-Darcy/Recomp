@@ -424,10 +424,21 @@ const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
 /* ---------- model ---------- */
 function bmr(w) { const s = S.settings; return 10*w + 6.25*s.heightCm - 5*s.age + (s.sex === 'f' ? -161 : 5); }
+// Watch calories from Strava for that day's sport sessions (null if none): a match cut short counts as what it was.
+function watchKcal(a, kind) {
+  const v = Object.values(a.strava || {}).filter(x => x.kind === kind && x.kcal > 0);
+  return v.length ? sum(v.map(x => x.kcal)) : null;
+}
 function actKcal(a, w) {
   const s = S.settings;
   const perKm = s.runPerKm > 0 ? s.runPerKm : 0.9 * w;
-  return (a.gym ? s.gym : 0) + (hasSport() && a.train ? s.train : 0) + (hasSport() && a.match ? s.match : 0) + (+a.run || 0) * perKm;
+  const sport = k => hasSport() && a[k] ? (watchKcal(a, k) ?? s[k]) : 0;
+  return (a.gym ? s.gym : 0) + sport('train') + sport('match') + (+a.run || 0) * perKm;
+}
+// The plan for a day, upgraded with what Strava says actually happened (so past/today targets use real sessions).
+function withActual(a, d) {
+  const l = S.logs[d];
+  return l && l.strava ? { ...a, train: a.train || l.train, match: a.match || l.match, strava: l.strava } : a;
 }
 function formulaTDEE(a, w) { return bmr(w) * S.settings.factor + actKcal(a, w); }
 
@@ -576,7 +587,8 @@ function renderPlan() {
   $('#wkLabel').textContent = `${labels[weekOffset] ?? 'Week of'} · ${fmtShort(key)} – ${fmtShort(iso(addDays(start, 6)))}`;
   const today = todayIso(), sp = sportName();
   $('#week').innerHTML = plan.map((a, i) => {
-    const d = iso(addDays(start, i)), k = targetFor(a, cal, d), m = macros(k), log = S.logs[d];
+    const d = iso(addDays(start, i)), act = withActual(a, d), k = targetFor(act, cal, d), m = macros(k), log = S.logs[d];
+    const watched = ['train', 'match'].map(kd => act[kd] && watchKcal(act, kd)).filter(Boolean);
     const chip = (f, t, title) => `<button class="chip ${a[f] ? 'on' : ''}" data-i="${i}" data-f="${f}" title="${esc(title || t)}">${t}</button>`;
     return `<div class="day ${d === today ? 'today' : ''}">
       <h3>${DAYS[i]} <span class="date">${fmtShort(d)}</span></h3>
@@ -585,6 +597,7 @@ function renderPlan() {
       <label class="run">🏃 Run <input type="number" min="0" step="0.5" value="${a.run ? fd(a.run) : ''}" data-i="${i}" data-run placeholder="0"> ${du()}</label>
       <div class="kcal">${k}</div>
       <div class="mac">P ${m.p}g · C ${m.c}g · F ${m.f}g</div>
+      ${watched.length ? `<div class="mac" title="Uses your watch's calories from Strava instead of the flat estimate">⌚ ${sportEmoji()} ${sum(watched)} kcal (watch)</div>` : ''}
       ${d >= startDate() && d < goalStart() ? '<div class="mac"><span class="pill">Maintenance</span></div>' : ''}
       ${log && log.kcal ? `<div class="logged">Logged ${log.kcal} kcal</div>` : ''}
     </div>`;
@@ -1575,6 +1588,7 @@ function applyStrava(d) {
   const l = S.logs[d]; let run = 0, hasRun = false;
   for (const a of Object.values(l.strava || {})) {
     const k = stravaKind(a, d);
+    a.kind = k;   // remembered so watch calories can be matched to the session type
     if (k === 'run') { run += a.km; hasRun = true; } else if (k) l[k] = 1;
   }
   if (hasRun) l.run = +run.toFixed(2);
@@ -1912,7 +1926,7 @@ $('#week').addEventListener('change', e => {
 $('#lDate').addEventListener('change', e => fillLogForm(e.target.value));
 ['#lGym','#lTrain','#lMatch','#lRun'].forEach(id => $(id).addEventListener('change', () => {
   const l = S.logs[$('#lDate').value];
-  if (!l || !l.kcal) $('#lKcal').value = targetFor(formActs(), undefined, $('#lDate').value); // keep target in sync until calories are saved
+  if (!l || !l.kcal) $('#lKcal').value = targetFor({ ...formActs(), strava: l && l.strava }, undefined, $('#lDate').value); // keep target in sync until calories are saved
 }));
 $('#logForm').addEventListener('submit', e => {
   e.preventDefault();
