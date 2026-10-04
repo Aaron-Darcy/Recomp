@@ -5,10 +5,12 @@
 *.ics
 my-data/
 
-# lib/ only ships the Excel library and its licence
+# lib/ only ships the Excel and chart libraries and their licences
 lib/*
 !lib/xlsx.full.min.js
 !lib/LICENSE-sheetjs.txt
+!lib/echarts.min.js
+!lib/LICENSE-echarts.txt
 
 # Old filename, kept locally as a redirect to index.html
 bulk-tracker.html
