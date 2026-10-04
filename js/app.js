@@ -20,8 +20,8 @@ const PAGES = [
   ['today', 'Today', renderToday], ['plan', 'Plan', renderPlan],
   ['_', 'Dashboards'], ['body', 'Body', renderBody], ['nutrition', 'Nutrition', renderNutrition], ['gym', 'Gym', () => { renderGym(); renderSplit(); }],
   ['running', 'Running', renderRunning], ['recovery', 'Recovery', renderRecovery], ['insights', 'Insights', renderInsightsPage],
-  ['_', 'Review'], ['checkin', 'Check-in', renderCheckin], ['recap', 'Monthly recap', renderRecap], ['log', 'Daily log', renderLog],
-  ['_', ''], ['settings', 'Settings', () => { renderConnections(); renderAppearance(); renderHealthBox(); renderHevy(); renderStrava(); }]
+  ['_', 'Review'], ['checkin', 'Check-in', renderCheckin], ['recap', 'Monthly recap', renderRecap],
+  ['_', ''], ['log', 'Edit a day', renderLog], ['settings', 'Settings', () => { renderConnections(); renderAppearance(); renderHealthBox(); renderHevy(); renderStrava(); }]
 ];
 const PAGE = Object.fromEntries(PAGES.filter(p => p[0] !== '_').map(p => [p[0], p]));
 const BOTTOM = ['today', 'nutrition', 'gym', 'running', 'more'];

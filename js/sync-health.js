@@ -199,8 +199,9 @@ function mergeHealth(parsed) {
     const { _st, ...a } = w, prev = S.acts[w.id] || {};
     if (_st) {
       saveStream(w.id, _st); a.stream = 1;
+      if (_st.heartrate) a.hrh = hrHist(_st.heartrate);
       if (_st.velocity_smooth && /Run/.test(a.type)) { const iv = detectIntervals(_st); a.ivs = iv ? { structured: iv.structured, reps: iv.reps, segs: iv.segs } : { structured: false, reps: 0, segs: [] }; a.splits = splitsFromStream(_st); }
-    } else if (prev.stream) Object.assign(a, { stream: 1, ivs: prev.ivs, splits: prev.splits });   // a later summary-only batch keeps the trace
+    } else if (prev.stream) Object.assign(a, { stream: 1, ivs: prev.ivs, splits: prev.splits, hrh: prev.hrh });   // a later summary-only batch keeps the trace
     S.acts[w.id] = a; r.workouts++;
   }
   return r;
@@ -222,7 +223,7 @@ let hxBusy = false;
 async function healthSync(loud) {
   if (!HX.url || !HX.key || hxBusy) return;
   hxBusy = true;
-  if (!HX.v2) { HX.after = ''; HX.v2 = 1; }   // once: re-read everything the relay still holds, so older workouts get their heart-rate and pace traces
+  if ((HX.v || 0) < 3) { HX.after = ''; HX.v = 3; }   // after an upgrade: re-read everything the relay still holds, so older workouts get their heart-rate and pace traces
   let n = 0, days = 0, wk = 0, bad = 0;
   try {
     for (let i = 0; i < 50; i++) {

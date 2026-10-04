@@ -129,7 +129,7 @@ function insights() {
   out.push(...healthInsights());
   // consistency
   const d14 = iso(addDays(new Date(), -14)), odd = [...flaggedWeighIns()].filter(d => d > d14);
-  if (odd.length) out.push({ ok: false, t: `Weigh-in check: ${odd.map(d => `${fmtShort(d)} (${fw(S.logs[d].weight)} ${wu()})`).join(', ')} ${odd.length > 1 ? 'look' : 'looks'} off, so ${odd.length > 1 ? 'they’re' : 'it’s'} left out of your trend. Fix ${odd.length > 1 ? 'them' : 'it'} in the Daily log, or tap “It’s right”.` });
+  if (odd.length) out.push({ ok: false, t: `Weigh-in check: ${odd.map(d => `${fmtShort(d)} (${fw(S.logs[d].weight)} ${wu()})`).join(', ')} ${odd.length > 1 ? 'look' : 'looks'} off, so ${odd.length > 1 ? 'they’re' : 'it’s'} left out of your trend. Fix ${odd.length > 1 ? 'them' : 'it'} in Edit a day, or tap “It’s right”.` });
   const wi = Object.keys(S.logs).filter(d => d > d14 && S.logs[d].weight > 0).length, st = weighInStreak();
   out.push({ ok: wi >= 8, t: `Consistency: ${wi} weigh-ins in the last 14 days · streak ${st.cur} day${st.cur === 1 ? '' : 's'} (best ${st.best})${S.checkins.length ? ` · ${S.checkins.length} check-in${S.checkins.length > 1 ? 's' : ''} done` : ''}.` });
   return out;

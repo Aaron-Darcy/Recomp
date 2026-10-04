@@ -57,7 +57,7 @@ You can also host it with GitHub Pages (**Settings → Pages → Deploy from bra
 
 Protein and fat are set per kg (or lb) of bodyweight, and carbs fill the rest.
 
-**Tip:** the calorie box in the daily log is pre-filled with the target. If you roughly hit it, just save. Only type a number if you were well over or under.
+**Tip:** if you type calories in **Edit a day**, the box is pre-filled with the target. If you roughly hit it, just save. Only type a number if you were well over or under.
 
 ## Connecting Strava (optional)
 

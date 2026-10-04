@@ -108,7 +108,7 @@ function renderCheckin() {
       <div class="verdict"><b>${vt}</b><br>${vd}</div>
       <h2>Before you lock it in</h2>
       <ul class="checklist">
-        <li>${tick(R.weighIns >= 4)} Weigh-ins last week: ${R.weighIns}/7 <button class="link" data-go="log">Daily log</button></li>
+        <li>${tick(R.weighIns >= 4)} Weigh-ins last week: ${R.weighIns}/7 <button class="link" data-go="log">Edit a day</button></li>
         ${HV.key ? `<li>${tick(HV.lastSync && Date.now() - HV.lastSync < 864e5)} Hevy: last synced ${HV.lastSync ? new Date(HV.lastSync).toLocaleString() : 'never'} <button class="link" id="ciHevy">Sync now</button></li>`
           : S.workouts.length ? `<li>${tick(lastStrong && dayNum(lastStrong) >= dayNum(R.to) - 3)} Strong data: latest workout ${lastStrong ? fmtShort(lastStrong) : 'none'}. Export from Strong and <button class="link" data-go="settings">import it</button> if you've trained since.</li>` : ''}
         ${SV.refresh ? `<li>${tick(SV.lastSync && Date.now() / 1000 - SV.lastSync < 86400)} Strava: last synced ${SV.lastSync ? new Date(SV.lastSync * 1000).toLocaleString() : 'never'} <button class="link" id="ciSync">Sync now</button></li>` : ''}

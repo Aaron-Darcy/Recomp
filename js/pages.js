@@ -185,7 +185,7 @@ function renderNutrition() {
       ${hasMicro ? cbox('nMicro', 'Fibre, sugar & sodium', 'daily') : ''}
     </div>
     <div class="secttl">Nutrition insights</div>${insightCards(allInsights('nutrition'))}`;
-  if (!meas.length) chEmpty('#nKcal', 'No calories logged in this range. Connect Apple Health (Settings → Connections) or type them in the Daily log.');
+  if (!meas.length) chEmpty('#nKcal', 'No calories logged in this range. Connect Apple Health (Settings → Connections) or type them in Edit a day.');
   else ech('#nKcal', { xAxis: xTime(), yAxis: yVal(v => fmtK(+v)), dataZoom: zoomIf(days.length),
     series: [barS('Eaten', meas.map(d => { const v = intake(d), tg = dayTarget(d), c = Math.abs(v - tg) <= tg * .1 ? t.good : v > tg ? t.warn : t.c[3]; return { value: [d, v], itemStyle: { color: c, borderRadius: [4, 4, 0, 0] } }; }), t.accent, { barMaxWidth: 18 }),
       lineS('Target', days.map(d => [d, dayTarget(d)]), t.ink2, { step: 'middle', smooth: false, lineStyle: { type: 'dashed', width: 1.5, color: t.ink2 } })],

@@ -61,7 +61,7 @@ async function loadStream(id) {
   const st = { time: j.time && j.time.data, distance: j.distance && j.distance.data, velocity_smooth: j.velocity_smooth && j.velocity_smooth.data, heartrate: j.heartrate && j.heartrate.data };
   if (!st.time) return null;
   const iv = detectIntervals(st);
-  if (S.acts[id]) { S.acts[id].ivs = iv ? { structured: iv.structured, reps: iv.reps, segs: iv.segs } : { structured: false, reps: 0, segs: [] }; save(); }
+  if (S.acts[id]) { S.acts[id].ivs = iv ? { structured: iv.structured, reps: iv.reps, segs: iv.segs } : { structured: false, reps: 0, segs: [] }; if (st.heartrate) S.acts[id].hrh = hrHist(st.heartrate, st.time); save(); }
   const thin = thinStream(st);
   try { await idb('readwrite', s => s.put(thin, 'stream:' + id)); } catch (e) {}
   return (STREAMS[id] = thin);
@@ -91,6 +91,7 @@ function renderRunTab(tabs) {
     <div class="grid g2" style="margin-top:14px">
       ${cbox('rnWeek', 'Weekly distance', 'labels = change vs the week before')}
       ${cbox('rnPace', 'Pace', 'each run · line = 5-run average · up is faster')}
+      ${cbox('rnZones', 'Time in heart-rate zones', `minutes per week · max HR ${maxHR()}`)}
       ${runs.some(r => r.hr && paceOf(r)) ? cbox('rnEff', 'Aerobic efficiency', 'metres per heartbeat · up = fitter (same pace at lower HR)') : ''}
       ${voL ? cbox('rnVo2', 'VO2 max', 'estimated by your watch') : ''}
     </div>
@@ -98,10 +99,11 @@ function renderRunTab(tabs) {
     <div class="grid g2">
       <div class="box" style="padding:6px 8px">${runs.length ? `<div style="max-height:520px;overflow:auto"><table class="runlist"><tr><th>Date</th><th>Run</th><th>${du()}</th><th>Pace</th><th>HR</th></tr>
         ${runs.map(r => `<tr class="r ${r.id === runSel ? 'on' : ''}" data-run="${r.id || ''}"><td>${fmtShort(r.d)}</td><td>${esc(r.name || 'Run')}${r.ivs && r.ivs.structured ? ' <span class="pill2">⚡ ' + r.ivs.reps + ' reps</span>' : r.workout ? ' <span class="pill2">workout</span>' : ''}</td><td>${fd(r.km, 2)}</td><td>${paceOf(r) ? fmtPace(paceOf(r)) : '–'}</td><td>${r.hr || '–'}</td></tr>`).join('')}</table></div>`
-        : '<div class="empty2">No runs in this range. Connect Strava in Settings → Connections, or log run distance in the Daily log.</div>'}</div>
+        : '<div class="empty2">No runs in this range. Connect Strava in Settings → Connections, or add a run in Edit a day.</div>'}</div>
       <div class="box" id="runDetail"></div>
     </div>
-    <div class="secttl">Running insights</div>${insightCards(allInsights('running'))}`;
+    <div class="secttl">Running insights</div>${insightCards([...runZoneInsights(runs), ...allInsights('running')])}`;
+  zoneWeeks('#rnZones', runs, weeks, 'runs');
   // weekly km + ramp
   if (!runs.length) chEmpty('#rnWeek', 'No runs in this range.');
   else ech('#rnWeek', { xAxis: xCat(weeks.map(wkLabel)), yAxis: yVal(v => Math.round(v), { scale: false }),
@@ -132,7 +134,7 @@ function renderRunDetail() {
   const lapRows = laps.map((l, i) => `<tr><td>Lap ${i + 1}</td><td>${Math.floor(l.s / 60)}:${pad(l.s % 60)}</td><td>${fd(l.km, 2)}</td><td>${secPace(l.s, l.km) ? fmtPace(secPace(l.s, l.km)) : '–'}</td><td>${l.hr || '–'}</td></tr>`).join('');
   const canStream = !!src.stream || /^\d+$/.test(String(sid)), from = src.stream ? 'your Apple Watch' : 'Strava';
   box.innerHTML = `<h3>${esc(r.name || 'Run')} <span class="note">${dLabel(r.d)} · ${fd(r.km, 2)} ${du()} · ${r.min} min${paceOf(r) ? ` · ${fmtPace(paceOf(r))}/${du()}` : ''}${r.hr ? ` · ${r.hr} bpm` : ''}${r.elev ? ` · ${r.elev} m climb` : ''}</span></h3>
-    <div class="ch" id="rdChart"></div>
+    <div class="ch" id="rdChart"></div>${actZones(r) ? '<div class="ch xs" id="rdZones" style="height:56px"></div>' : ''}
     ${iv ? (iv.structured ? `<p class="help" style="margin:6px 0">⚡ <b>${iv.reps} fast reps detected</b> from your pace (${from}). Shaded on the chart above.</p>` : '<p class="help" style="margin:6px 0">Steady run: no intervals detected in your pace.</p>') : ''}
     ${segRows ? `<details ${iv.structured ? 'open' : ''}><summary class="note" style="cursor:pointer">Detected blocks</summary><table class="ivtbl"><tr><th></th><th>Time</th><th>${du()}</th><th>Pace</th><th>HR</th></tr>${segRows}</table></details>` : ''}
     ${lapRows ? `<details><summary class="note" style="cursor:pointer">Laps from your watch (${laps.length})</summary><table class="ivtbl"><tr><th></th><th>Time</th><th>${du()}</th><th>Pace</th><th>HR</th></tr>${lapRows}</table></details>` : ''}
@@ -155,6 +157,7 @@ function renderRunDetail() {
         markArea: areas.length ? { silent: true, itemStyle: { color: t.c[1], opacity: .16 }, data: areas } : undefined })],
       tooltip: { trigger: 'axis', formatter: ps => { const p = ps[0].value, h = hrAt(p[0]); return `${(+p[0]).toFixed(2)} ${du()}<br>${fmtPace(p[1])}/${du()}${h ? `<br>${h} bpm` : ''}`; } } });
   };
+  if ($('#rdZones')) zoneBar('#rdZones', actZones(r));
   if (STREAMS[sid]) return drawStream(STREAMS[sid]);
   drawSplits();
   if (canStream) loadStream(sid).then(st => {
@@ -182,12 +185,42 @@ function sportActs() {
 // Max HR: the highest you've actually hit on the watch, or 220 − age if that's higher.
 const maxHR = () => memo('maxhr', () => Math.max(220 - (+S.settings.age || 30), ...Object.values(S.acts).map(a => +a.hrMax || 0).filter(x => x < 230)));
 const ZONES = [['Z1 easy', 0, .6], ['Z2 aerobic', .6, .7], ['Z3 tempo', .7, .8], ['Z4 hard', .8, .9], ['Z5 max', .9, 9]];
-const zoneColors = t => [t.muted, t.c[1], t.good, t.warn, t.bad];
+const zoneColors = t => [t.muted, t.accent, t.good, t.warn, t.bad];
 // Seconds in each heart-rate zone (step = seconds per sample).
 function hrZones(hr, step = 1) {
   const m = maxHR(), z = [0, 0, 0, 0, 0];
   for (const h of hr) { if (!(h > 0)) continue; const f = h / m; z[ZONES.findIndex(([, lo, hi]) => f >= lo && f < hi)] += step; }
   return z;
+}
+// Heart-rate histogram for a session: seconds spent in each 5-bpm band. Small enough to keep on the activity, and zones
+// are worked out from it at display time, so they follow your max HR as it's learnt.
+function hrHist(hr, time) {
+  const h = {};
+  for (let i = 0; i < hr.length; i++) { const v = hr[i]; if (!(v > 0)) continue; const dt = time ? Math.min(30, (time[i + 1] ?? time[i] + 1) - time[i]) : 1; const b = Math.floor(v / 5) * 5; h[b] = (h[b] || 0) + dt; }
+  return h;
+}
+function zonesFromHist(h) {
+  const m = maxHR(), z = [0, 0, 0, 0, 0];
+  for (const [b, s] of Object.entries(h || {})) { const f = (+b + 2.5) / m; z[ZONES.findIndex(([, lo, hi]) => f >= lo && f < hi)] += s; }
+  return z;
+}
+// Zones for an activity, from its own histogram or its Apple Health twin's.
+const actZones = a => { const h = a.hrh || ((healthTwin(a) || {}).hrh); return h ? zonesFromHist(h) : null; };
+function zoneBar(el, z) {
+  const t = TH(), zc = zoneColors(t), tot = sum(z) || 1;
+  return ech(el, { grid: { left: 4, right: 4, top: 4, bottom: 4, containLabel: false }, xAxis: { type: 'value', show: false, max: tot }, yAxis: { type: 'category', show: false, data: [''] },
+    tooltip: { trigger: 'item', formatter: p => `${p.seriesName}: <b>${Math.round(p.value / 60)} min</b> (${Math.round(p.value / tot * 100)}%)` },
+    series: ZONES.map(([n], i) => ({ name: n, type: 'bar', stack: 'z', data: [z[i]], barWidth: 26, itemStyle: { color: zc[i] },
+      label: { show: z[i] / tot > .09, formatter: () => `${n.split(' ')[0]} ${Math.round(z[i] / 60)} min`, color: '#fff', fontSize: 11 } })) });
+}
+// Minutes per zone per week, stacked.
+function zoneWeeks(el, acts, weeks, what) {
+  const t = TH(), zc = zoneColors(t), per = weeks.map(ws => { const z = [0, 0, 0, 0, 0]; for (const a of acts) if (wkOf(a.d) === ws) { const q = actZones(a); if (q) q.forEach((v, i) => z[i] += v); } return z; });
+  if (!per.some(z => sum(z) > 0)) return chEmpty(el, `No heart-rate traces for ${what} in this range yet. They come with Apple Health workouts (Include Workout Metrics on).`);
+  ech(el, { xAxis: xCat(weeks.map(wkLabel)), yAxis: yVal(v => Math.round(v), { scale: false }), grid: { top: 34 },
+    legend: { show: true, top: 0, textStyle: { color: t.muted, fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+    series: ZONES.map(([n], i) => barS(n, per.map(z => Math.round(z[i] / 60)), zc[i], { stack: 'z', itemStyle: { color: zc[i], borderRadius: i === 4 ? [4, 4, 0, 0] : 0 } })),
+    tooltip: { trigger: 'axis', formatter: ps => { const tot = sum(ps.map(p => p.value)) || 1; return `<b>Week of ${ps[0].name}</b><br>${ps.filter(p => p.value).reverse().map(p => `${p.marker}${p.seriesName}: ${p.value} min (${Math.round(p.value / tot * 100)}%)`).join('<br>')}`; } } });
 }
 function renderSportTab(tabs) {
   const from = rangeFrom(), t = TH(), today = todayIso(), sp = cap(sportName()), all = sportActs(), ss = all.filter(s => s.d >= from && s.d <= today);
@@ -216,6 +249,7 @@ function renderSportTab(tabs) {
     <div class="grid g2" style="margin-top:14px">
       ${cbox('spWeek', 'Minutes per week', 'matches and training')}
       ${cbox('spKcal', 'Calories per session', 'from your watch · dashed = what your plan assumes')}
+      ${cbox('spZones', 'Time in heart-rate zones', `minutes per week · max HR ${maxHR()}`)}
     </div>
     <div class="secttl">Sessions</div>
     <div class="grid g2">
@@ -240,6 +274,7 @@ function renderSportTab(tabs) {
       legend: { show: true, top: 0, right: 0, textStyle: { color: t.muted, fontSize: 11 } },
       tooltip: { trigger: 'item', formatter: p => `${tipHead(p.value[0])}<br>${p.seriesName}: <b>${p.value[1]} kcal</b>` } });
   }
+  zoneWeeks('#spZones', ss, weeks, 'sessions');
   renderSportDetail();
 }
 function renderSportDetail() {
@@ -257,14 +292,20 @@ function renderSportDetail() {
       yAxis: yVal(v => Math.round(v)), visualMap: { show: false, dimension: 1, pieces: ZONES.map(([, lo, hi], i) => ({ gte: lo * m, lt: hi * m, color: zc[i] })) },
       series: [lineS('Heart rate', pts, t.bad, { smooth: 0.2, lineStyle: { width: 1.6 } })],
       tooltip: { trigger: 'axis', formatter: ps => `${Math.round(ps[0].value[0])} min<br><b>${ps[0].value[1]} bpm</b> (${Math.round(ps[0].value[1] / m * 100)}% of max ${m})` } });
-    const z = hrZones(st.heartrate, step), tot = sum(z) || 1;
-    ech('#sdZones', { grid: { left: 4, right: 4, top: 4, bottom: 4, containLabel: false }, xAxis: { type: 'value', show: false, max: tot }, yAxis: { type: 'category', show: false, data: [''] },
-      tooltip: { trigger: 'item', formatter: p => `${p.seriesName}: <b>${Math.round(p.value / 60)} min</b> (${Math.round(p.value / tot * 100)}%)` },
-      series: ZONES.map(([n], i) => ({ name: n, type: 'bar', stack: 'z', data: [z[i]], barWidth: 26, itemStyle: { color: zc[i] },
-        label: { show: z[i] / tot > .09, formatter: () => `${n.split(' ')[0]} ${Math.round(z[i] / 60)} min`, color: '#fff', fontSize: 11 } })) });
+    zoneBar('#sdZones', hrZones(st.heartrate, step));
   };
   if (STREAMS[sid]) return draw(STREAMS[sid]);
   chEmpty('#sdHr', 'Loading…');
   loadStream(sid).then(st => { if (sportSel === a.id && $('#sportDetail')) draw(st); })
     .catch(e => { const m = $('#sdMsg'); if (m) m.innerHTML = `<span class="warn">${esc(e.message)}</span>`; draw(null); });
+}
+
+// Easy/hard balance: most runners improve fastest with ~80% of running time easy (Z1–2).
+function runZoneInsights(runs) {
+  const z = [0, 0, 0, 0, 0]; let n = 0;
+  for (const r of runs) { const q = actZones(r); if (q) { q.forEach((v, i) => z[i] += v); n++; } }
+  const tot = sum(z); if (n < 3 || tot < 3600) return [];
+  const easy = (z[0] + z[1]) / tot, hard = (z[3] + z[4]) / tot, mid = z[2] / tot;
+  if (easy >= .7) return [{ area: 'running', sev: 'good', title: 'Easy/hard balance', text: `${Math.round(easy * 100)}% of your running is easy (zones 1–2) and ${Math.round(hard * 100)}% hard. That's a good mix for building fitness.`, prio: 4 }];
+  return [{ area: 'running', sev: 'info', title: 'Easy/hard balance', text: `Only ${Math.round(easy * 100)}% of your running is easy (zones 1–2); ${Math.round(mid * 100)}% sits in zone 3. Slowing your easy runs down (so the hard days can be harder) usually improves pace faster. Aim for ~80% easy.`, prio: 2 }];
 }
