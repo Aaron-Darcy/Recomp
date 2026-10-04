@@ -31,7 +31,7 @@ const svg = k => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[k] || ''}</
 function renderNav() {
   const cur = curPage(), due = checkinDue();
   $('#nav').innerHTML = PAGES.map(([k, n]) => k === '_' ? (n ? `<div class="navgrp">${n}</div>` : '<div style="height:10px"></div>')
-    : `<a class="nav ${k === cur ? 'on' : ''}" href="#/${k}">${svg(k)}<span>${n}</span>${k === 'checkin' && due ? '<span class="dotbadge" title="Check-in due"></span>' : ''}</a>`).join('');
+    : `<a class="nav ${k === cur ? 'on' : ''}" href="#/${k}">${svg(k)}<span>${k === 'running' ? cardioName() : n}</span>${k === 'checkin' && due ? '<span class="dotbadge" title="Check-in due"></span>' : ''}</a>`).join('');
   $('#bottombar').innerHTML = BOTTOM.map(k => k === 'more' ? `<a href="#" data-more="1" class="${!BOTTOM.includes(cur) ? 'on' : ''}">${svg('more')}<span>More</span></a>`
     : `<a href="#/${k}" class="${k === cur ? 'on' : ''}">${svg(k)}<span>${PAGE[k][1]}</span></a>`).join('');
   const bits = [HX.url && 'Apple Health', HV.key && 'Hevy', connOn('strava') && SV.refresh && 'Strava'].filter(Boolean);
@@ -41,8 +41,9 @@ function renderPage() {
   clearMemo();
   const cur = curPage();
   document.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'p-' + cur));
-  $('#topTitle').textContent = PAGE[cur][1];
-  document.title = `${PAGE[cur][1]} · Recomp`;
+  const title = cur === 'running' ? cardioName() : PAGE[cur][1];
+  $('#topTitle').textContent = title;
+  document.title = `${title} · Recomp`;
   try { PAGE[cur][2](); } catch (e) { console.error(e); $('#p-' + cur).insertAdjacentHTML('afterbegin', `<div class="banner">Something went wrong drawing this page: ${esc(e.message)}</div>`); }
 }
 // Shared bits every page relies on, then the page you're looking at.
@@ -76,11 +77,16 @@ document.addEventListener('click', async e => {
   if (r) { S.settings.dashRange = +r.dataset.range; save(); renderPage(); return; }
   if (e.target.id === 'leaveDemo' && confirm('Clear the demo data and set up your own?')) { S = defaults(); save(); openOnboarding(); renderSettings(); renderAll(); }
   if (e.target.id === 'wiCheck') { e.target.textContent = 'Checking…'; await Promise.all([refreshWeighIns(true), healthSync(true)]); renderStats(); }
+  const ct = e.target.closest('[data-ctab]');
+  if (ct) { cardioTab = ct.dataset.ctab; try { localStorage.setItem('recomp.cardioTab', cardioTab); } catch (err) {} renderRunning(); return; }
+  const so = e.target.closest('tr.r[data-sport]');
+  if (so && so.dataset.sport) { sportSel = so.dataset.sport; document.querySelectorAll('tr.r[data-sport]').forEach(x => x.classList.toggle('on', x === so)); renderSportDetail(); if (innerWidth <= 900) $('#sportDetail').scrollIntoView({ behavior: 'smooth' }); return; }
   const tr = e.target.closest('tr.r[data-run]');
-  if (tr && tr.dataset.run) { runSel = tr.dataset.run; document.querySelectorAll('tr.r').forEach(x => x.classList.toggle('on', x === tr)); renderRunDetail(); if (innerWidth <= 900) $('#runDetail').scrollIntoView({ behavior: 'smooth' }); }
+  if (tr && tr.dataset.run) { runSel = tr.dataset.run; document.querySelectorAll('tr.r[data-run]').forEach(x => x.classList.toggle('on', x === tr)); renderRunDetail(); if (innerWidth <= 900) $('#runDetail').scrollIntoView({ behavior: 'smooth' }); }
 });
 document.addEventListener('change', e => {
   if (e.target.id === 'recapPick') { recapMonth = e.target.value; renderRecap(); }
+  if (e.target.id === 'liftsFrom') { S.settings.liftsFrom = e.target.value; save(); renderSettings(); renderAll(); }
   const c = e.target.dataset.connT;
   if (c) { (S.settings.connections ||= {})[c] = e.target.checked; save(); renderConnections(); renderNav(); }
   const ap = e.target.dataset.ap;

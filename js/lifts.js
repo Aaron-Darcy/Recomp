@@ -17,8 +17,9 @@ function currentSplit() {
   return [...seen.values()].sort((a, b) => dayIdx(parse(a.d)) - dayIdx(parse(b.d)));
 }
 function exerciseIndex() {
-  const idx = {};
+  const idx = {}, from = S.settings.liftsFrom || '';   // lift history can start later, e.g. after changing how an exercise is done
   for (const wk of S.workouts) {
+    if (from && wk.d < from) continue;
     const per = {};
     for (const [e, w, r, so] of wk.s) (per[e] ||= []).push([w, r, so]);
     for (const [e, sets] of Object.entries(per)) (idx[e] ||= []).push({ d: wk.d, sets });
@@ -47,11 +48,12 @@ function splitRows() {
   return currentSplit().map(wk => ({
     wk,
     exercises: [...new Set(wk.s.map(s => s[0]))].map(ex => {
-      const hist = idx[ex], last = hist[hist.length - 1];
+      const hist = idx[ex]; if (!hist) return null;
+      const last = hist[hist.length - 1];
       let best = { v: 0 };
       for (const h of hist) for (const [w, r] of h.sets) { const v = e1rm(w, r); if (v > best.v) best = { v, w, r, d: h.d }; }
       return { ex, last, next: nextTarget(ex, last.sets), best, pct: best.v ? topE1(last.sets) / best.v * 100 : 0 };
-    })
+    }).filter(Boolean)
   }));
 }
 function renderSplit() {

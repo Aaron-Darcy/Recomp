@@ -13,7 +13,7 @@ const defaults = () => ({
     proteinPerKg: 2.0, fatPerKg: 0.9,
     repLow: 8, repHigh: 12, checkInDay: 0,
     startDate: '', maintWeeks: 0, onboarded: false,
-    targetWeight: 0, theme: 'auto', dashRange: 28, connections: {}
+    targetWeight: 0, liftsFrom: '', theme: 'auto', dashRange: 28, connections: {}
   },
   template: [{gym:1},{},{gym:1},{},{gym:1},{},{}],   // Mon..Sun
   plans: {},    // weekStart ISO -> [7 activity objects]

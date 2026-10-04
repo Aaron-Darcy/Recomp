@@ -17,7 +17,7 @@ It's a static web page with no account and no server. Your data stays in your br
   - **Body:** weight trend with an on-track corridor, a projection to your target weight, and weekly change.
   - **Nutrition:** daily calories vs target, macros, a protein calendar, a weekday pattern, and energy balance (what your eating predicts vs what the scale did).
   - **Gym:** sets per muscle per week, a session calendar, a strength index, personal bests, e1RM per lift, and your split with set-by-set double progression.
-  - **Running:** weekly distance with ramp warnings, pace and aerobic-efficiency trends, VO2 max, and every run with its splits, laps and **intervals detected from your pace**.
+  - **Running & sport:** separate tabs. Running has weekly distance with ramp warnings, pace and aerobic-efficiency trends, VO2 max, and every run with its splits, laps and **intervals detected from your pace** (from the watch's own GPS via Apple Health, or Strava). The sport tab (e.g. football) keeps matches and training apart with time played, watch calories vs your plan, and heart-rate zones per session.
   - **Recovery:** readiness trend, sleep stages and timing, resting HR and HRV against your normal range, steps, active energy and breathing rate.
 - **Insights everywhere.** Plain-English notes such as stalled lifts, mileage jumps, sleep debt, possible illness (resting HR and breathing rate both up), weekend eating and goal projection. A correlation finder spots your own patterns, for example "after nights under 6.5 h you ate ~300 kcal more".
 - **Monthly recap.** Totals, highlights and habit scores for any month.
@@ -98,7 +98,7 @@ Apple Health has no web API, so an iPhone app has to send the data. Recomp uses 
    - **Workers KV → Create instance**, then bind it to the worker as `HEALTH` (Bindings → Add binding → KV namespace).
    - **Settings → Variables and Secrets**: add a secret `RELAY_KEY`.
 2. Recomp: go to **Settings → Connections → Apple Health**, enter the worker URL and key, then **Save & test**.
-3. Health Auto Export: add a **REST API** automation pointing at `<worker>/ingest` with header `X-API-Key: <key>`, JSON v2, daily summaries, hourly. Then duplicate it with **Data Type: Workouts**, because each automation sends one data type.
+3. Health Auto Export: add a **REST API** automation pointing at `<worker>/ingest` with header `X-API-Key: <key>`, JSON v2, daily summaries, hourly. Then duplicate it with **Data Type: Workouts**, because each automation sends one data type, and turn on **Include Workout Metrics** (Seconds) and **Include Route Data** so Recomp can rebuild pace and heart rate for splits, intervals and HR zones.
 
 Recomp walks you through each step and generates the key for you.
 

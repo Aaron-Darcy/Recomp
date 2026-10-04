@@ -52,6 +52,63 @@ function haeType(name) {
   return /run/i.test(n) ? 'Run' : /soccer|football/i.test(n) ? 'Soccer' : /strength|weight|crossfit|functional/i.test(n) ? 'WeightTraining'
     : /cycl|bike/i.test(n) ? 'Ride' : /walk/i.test(n) ? 'Walk' : /hik/i.test(n) ? 'Hike' : n.replace(/\s+/g, '') || 'Workout';
 }
+// ---------- per-workout traces: GPS route / distance series / heart rate during the workout, resampled to 1 s ----------
+const hav = (a, b) => { const r = Math.PI / 180, x = Math.sin((b.lat - a.lat) * r / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin((b.lon - a.lon) * r / 2) ** 2; return 12742000 * Math.asin(Math.sqrt(x)); };
+const toMetres = (q, u) => { u = String(u || 'km').toLowerCase(); return u === 'mi' ? q * 1609.344 : u === 'm' ? q : u === 'yd' ? q * 0.9144 : q * 1000; };
+// Linear interpolation of [t, value] points onto whole seconds 0..n-1 (flat beyond the ends).
+function resample(pts, n) {
+  const out = new Array(n); let j = 0;
+  for (let i = 0; i < n; i++) {
+    while (j < pts.length - 2 && pts[j + 1][0] < i) j++;
+    const [t0, v0] = pts[j], [t1, v1] = pts[Math.min(j + 1, pts.length - 1)];
+    out[i] = i <= t0 ? v0 : i >= t1 ? v1 : v0 + (v1 - v0) * (i - t0) / (t1 - t0);
+  }
+  return out;
+}
+const seriesOf = (w, keys) => keys.map(k => w[k]).find(a => Array.isArray(a) && a.length);
+function workoutStream(w, st, dur) {
+  if (!(dur > 120) || dur > 6 * 3600) return null;
+  const n = Math.round(dur) + 1, inside = t => t >= -5 && t <= dur + 5;
+  let distance = null, heartrate = null;
+  const route = (Array.isArray(w.route) ? w.route : []).map(p => ({ t: (haeTime(p.timestamp || p.date) - st) / 1000, lat: +(p.latitude ?? p.lat), lon: +(p.longitude ?? p.lon) }))
+    .filter(p => inside(p.t) && !isNaN(p.lat) && !isNaN(p.lon)).sort((a, b) => a.t - b.t);
+  const ser = seriesOf(w, ['walkingAndRunningDistance', 'distanceWalkingRunning', 'walking_running_distance']);
+  if (route.length >= 30) {
+    let d = 0; distance = resample(route.map((p, i) => { if (i) d += hav(route[i - 1], p); return [p.t, d]; }), n);
+  } else if (ser && ser.length >= 3) {
+    const b = ser.map(p => [(haeTime(p.date) - st) / 1000, toMetres(+p.qty || 0, p.units)]).filter(p => inside(p[0])).sort((a, c) => a[0] - c[0]);
+    if (b.length >= 3) {
+      const gaps = b.slice(1).map((p, i) => p[0] - b[i][0]).sort((x, y) => x - y), step = gaps[gaps.length >> 1] || 60;
+      let d = 0; const pts = [[Math.max(0, b[0][0]), 0]];
+      b.forEach(([t, m], i) => { d += m; pts.push([Math.min(dur, i + 1 < b.length ? b[i + 1][0] : t + step), d]); });   // each bucket's distance lands at its end
+      distance = resample(pts, n);
+    }
+  }
+  const hrs = seriesOf(w, ['heartRateData', 'heartRate_data', 'heart_rate_data']);
+  if (hrs) { const pts = hrs.map(p => [(haeTime(p.date) - st) / 1000, +(p.Avg ?? p.avg ?? p.qty)]).filter(p => inside(p[0]) && p[1] > 0).sort((a, c) => a[0] - c[0]); if (pts.length >= 3) heartrate = resample(pts, n).map(Math.round); }
+  if (!distance && !heartrate) return null;
+  const time = [...Array(n).keys()];
+  const velocity_smooth = distance ? distance.map((_, i) => (distance[Math.min(n - 1, i + 2)] - distance[Math.max(0, i - 2)]) / (Math.min(n - 1, i + 2) - Math.max(0, i - 2))) : null;
+  return { time, distance, velocity_smooth, heartrate };
+}
+// Per-km splits from a 1 s trace.
+function splitsFromStream(s) {
+  const d = s.distance; if (!d) return [];
+  const out = []; let i0 = 0;
+  for (let k = 1; ; k++) {
+    let i = i0; while (i < d.length && d[i] < k * 1000) i++;
+    const last = i >= d.length; if (last) i = d.length - 1;
+    const km = (d[i] - d[i0]) / 1000; if (km < (last ? 0.1 : 0.5)) break;
+    const h = s.heartrate ? s.heartrate.slice(i0, i + 1).filter(x => x > 0) : [];
+    out.push({ km: +km.toFixed(3), s: s.time[i] - s.time[i0], hr: h.length ? Math.round(avg(h)) : null, el: null });
+    if (last) break; i0 = i;
+  }
+  return out;
+}
+function saveStream(id, st) {
+  const thin = thinStream(st); STREAMS[id] = thin;
+  idb('readwrite', s => s.put(thin, 'stream:' + id)).catch(() => {});
+}
 // One Health Auto Export JSON payload → { days: {date: {field: value, sleep}}, workouts: [...] }
 function parseHAE(j) {
   const data = (j && j.data) || j || {}, days = {}, acc = {};
@@ -106,6 +163,13 @@ function parseHAE(j) {
       km: dist && +dist.qty > 0 ? +hUnit(+dist.qty, dist.units || 'km', 'km').toFixed(2) : 0,
       min: Math.round(dur / 60), kcal: e && +e.qty > 0 ? Math.round(hUnit(+e.qty, e.units, 'kcal')) : null,
       hr: hr && +hr.qty > 0 ? Math.round(+hr.qty) : null, hrMax: hrMax && +hrMax.qty > 0 ? Math.round(+hrMax.qty) : null });
+    const o = workouts[workouts.length - 1], tr = workoutStream(w, st, dur);
+    if (tr) {
+      o._st = tr;
+      const h = (tr.heartrate || []).filter(x => x > 0);
+      if (h.length && !o.hr) o.hr = Math.round(avg(h)); if (h.length && !o.hrMax) o.hrMax = Math.max(...h);
+      if (!o.km && tr.distance) o.km = +(tr.distance[tr.distance.length - 1] / 1000).toFixed(2);
+    }
   }
   return { days, workouts };
 }
@@ -130,7 +194,15 @@ function mergeHealth(parsed) {
     }
     if (h.kcal && (!l || l.kSrc !== 'manual')) { const L = logFor(d); L.kcal = h.kcal; L.kSrc = 'health'; if (h.mac) L.mac = h.mac; }
   }
-  for (const w of parsed.workouts) { if (w.d <= today) { S.acts[w.id] = w; r.workouts++; } }
+  for (const w of parsed.workouts) {
+    if (w.d > today) continue;
+    const { _st, ...a } = w, prev = S.acts[w.id] || {};
+    if (_st) {
+      saveStream(w.id, _st); a.stream = 1;
+      if (_st.velocity_smooth && /Run/.test(a.type)) { const iv = detectIntervals(_st); a.ivs = iv ? { structured: iv.structured, reps: iv.reps, segs: iv.segs } : { structured: false, reps: 0, segs: [] }; a.splits = splitsFromStream(_st); }
+    } else if (prev.stream) Object.assign(a, { stream: 1, ivs: prev.ivs, splits: prev.splits });   // a later summary-only batch keeps the trace
+    S.acts[w.id] = a; r.workouts++;
+  }
   return r;
 }
 // A workout that's on Strava and in Health (watch → both) only counts once: Strava's copy is kept.
@@ -150,6 +222,7 @@ let hxBusy = false;
 async function healthSync(loud) {
   if (!HX.url || !HX.key || hxBusy) return;
   hxBusy = true;
+  if (!HX.v2) { HX.after = ''; HX.v2 = 1; }   // once: re-read everything the relay still holds, so older workouts get their heart-rate and pace traces
   let n = 0, days = 0, wk = 0, bad = 0;
   try {
     for (let i = 0; i < 50; i++) {
@@ -185,6 +258,7 @@ function renderHealthBox() {
       <li><b>Headers:</b> add one. Key <code>X-API-Key</code>, value <code>${esc(key)}</code> <button class="link" data-copy="${esc(key)}">copy key</button></li>
       <li><b>Data:</b> Health Metrics (select all) + Workouts. <b>Format:</b> JSON, version 2. <b>Summarize data:</b> on, by Day. <b>Date range:</b> Default (yesterday + today).</li>
       <li><b>Workouts need their own automation:</b> each automation sends one data type, so duplicate this one and set its <b>Data Type</b> to <b>Workouts</b> (same URL, header and format). Without it, Recomp gets your heart, sleep and food but no workouts.</li>
+      <li>In the workouts automation turn on <b>Include Workout Metrics</b> (time grouping: <b>Seconds</b>) and <b>Include Route Data</b>. Recomp rebuilds your pace and heart rate from these to find intervals and splits, and heart-rate zones for football.</li>
       <li><b>Sync cadence:</b> every 1 hour. Turn the automation on, then use its manual sync once to send the first update.</li>
     </ol><p>The exact labels in Health Auto Export may differ slightly. Your phone only syncs while it's unlocked, so updates arrive through the day as you use it.</p>`;
   if (!HX.url || !HX.key) {

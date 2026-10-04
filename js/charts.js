@@ -33,7 +33,7 @@ function ech(el, opt) {
 const fmtD = v => new Date(v).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
 function xTime(extra = {}) {
   const t = TH();
-  return Object.assign({ type: 'time', axisLine: { lineStyle: { color: t.line } }, axisTick: { show: false },
+  return Object.assign({ type: 'time', minInterval: 864e5, axisLine: { lineStyle: { color: t.line } }, axisTick: { show: false },
     axisLabel: { color: t.muted, fontSize: 11, hideOverlap: true, formatter: v => fmtD(v) }, splitLine: { show: false } }, extra);
 }
 function yVal(fmt, extra = {}) {

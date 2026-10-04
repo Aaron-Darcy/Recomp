@@ -229,7 +229,8 @@ function renderGym() {
   const from = rangeFrom(), t = TH(), today = todayIso(), ws = S.workouts.filter(w => w.d >= from && w.d <= today);
   const weeks = Math.max(1, (dayNum(today) - dayNum(from) + 1) / 7), sets = sum(ws.map(w => w.s.filter(s => !/^w/i.test(s[3])).length));
   const prs = prList(from, 200), mins = ws.filter(w => w.m > 0);
-  $('#gymTop').innerHTML = phead('Gym', 'Sessions from Hevy (or Strong), volume per muscle and strength over time.', rangePicker()) + `
+  const lf = S.settings.liftsFrom || '';
+  $('#gymTop').innerHTML = phead('Gym', 'Sessions from Hevy (or Strong), volume per muscle and strength over time.', `<div class="row" style="gap:10px;align-items:center"><label class="note" title="Bests, stalled lifts, the strength index and ‘vs your best’ ignore sessions before this date. Handy after changing how you do an exercise.">Lift history from <input type="date" id="liftsFrom" value="${lf}" style="font:inherit;font-size:13px;padding:5px 6px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)"></label>${rangePicker()}</div>`) + `
     <div class="grid g4">
       ${kpi('Sessions', ws.length, `${(ws.length / weeks).toFixed(1)} a week`)}
       ${kpi('Working sets', sets, `${Math.round(sets / weeks)} a week`)}

@@ -56,7 +56,7 @@ async function loadStream(id) {
     const c = await idb('readonly', s => s.get('stream:' + id));
     if (c) { if (S.acts[id] && !S.acts[id].ivs) { const iv = detectIntervals(c); S.acts[id].ivs = iv ? { structured: iv.structured, reps: iv.reps, segs: iv.segs } : { structured: false, reps: 0, segs: [] }; save(); } return (STREAMS[id] = c); }
   } catch (e) {}
-  if (!SV.refresh) return null;
+  if (!SV.refresh || !/^\d+$/.test(String(id))) return null;   // Health traces only come from the sync
   const j = await stravaGet(`/activities/${id}/streams?keys=time,distance,velocity_smooth,heartrate&key_by_type=true`);
   const st = { time: j.time && j.time.data, distance: j.distance && j.distance.data, velocity_smooth: j.velocity_smooth && j.velocity_smooth.data, heartrate: j.heartrate && j.heartrate.data };
   if (!st.time) return null;
@@ -67,15 +67,21 @@ async function loadStream(id) {
   return (STREAMS[id] = thin);
 }
 
-// ---------- page ----------
+// ---------- page: Running | <sport> tabs ----------
+let cardioTab = (() => { try { return localStorage.getItem('recomp.cardioTab') || 'run'; } catch (e) { return 'run'; } })();
+const cardioName = () => hasSport() ? `Running & ${cap(sportName())}` : 'Running';
 function renderRunning() {
+  if (!hasSport()) cardioTab = 'run';
+  const tabs = hasSport() ? `<div class="segbar" role="tablist" style="margin-bottom:14px">${[['run', '🏃 Running'], ['sport', `${sportEmoji()} ${esc(cap(sportName()))}`]].map(([k, n]) => `<button data-ctab="${k}" class="${cardioTab === k ? 'on' : ''}">${n}</button>`).join('')}</div>` : '';
+  if (cardioTab === 'sport') renderSportTab(tabs); else renderRunTab(tabs);
+}
+function renderRunTab(tabs) {
   const from = rangeFrom(), t = TH(), today = todayIso(), all = runActs(), runs = all.filter(r => r.d >= from && r.d <= today);
   const paced = runs.filter(paceOf), tot = sum(runs.map(r => r.km)), lg = runs.reduce((a, r) => !a || r.km > a.km ? r : a, null);
   const vo = Object.keys(S.health).filter(d => S.health[d].vo2 > 0).sort(), voL = vo.length ? S.health[vo[vo.length - 1]].vo2 : null, voF = vo.filter(d => d >= from)[0];
-  const sp = sportName(), sl = sp ? sportList().filter(s => s.d >= from) : [];
   const weeks = weekStartsFrom(from).filter(w => w <= today), wkKm = weeks.map(ws => sum(runs.filter(r => wkOf(r.d) === ws).map(r => r.km)));
   if (!runSel || !all.some(r => r.id === runSel)) runSel = (runs.find(r => r.id) || {}).id || null;
-  $('#p-running').innerHTML = phead('Running', `Every run from Strava${HX.url ? ' and Apple Health' : ''}, with splits, laps and detected intervals.`, rangePicker()) + `
+  $('#p-running').innerHTML = phead(cardioName(), `Every run from ${HX.url ? 'Apple Health and ' : ''}Strava, with splits, laps and detected intervals.`, rangePicker()) + tabs + `
     <div class="grid g4">
       ${kpi('Distance', `${fd(tot)} <small>${du()}</small>`, `${runs.length} run${runs.length === 1 ? '' : 's'} · ${(dOut(tot) / Math.max(1, weeks.length)).toFixed(1)} ${du()}/week`)}
       ${kpi('Average pace', paced.length ? `${fmtPace(avg(paced.slice(0, 8).map(paceOf)))} <small>/${du()}</small>` : '–', paced.length ? `last ${Math.min(8, paced.length)} runs` : 'needs synced runs')}
@@ -95,11 +101,6 @@ function renderRunning() {
         : '<div class="empty2">No runs in this range. Connect Strava in Settings → Connections, or log run distance in the Daily log.</div>'}</div>
       <div class="box" id="runDetail"></div>
     </div>
-    ${sp ? `<div class="secttl">${esc(cap(sp))}</div><div class="grid g2">${cbox('rnSport', `${esc(cap(sp))} sessions`, 'per week', 'sm')}
-      <div class="box"><h3>${esc(cap(sp))} load</h3>${sl.length ? (() => { const wm = sl.filter(s => s.min > 0), wk = sl.filter(s => s.kcal > 0); return `
-        <div class="tline"><div class="ti">${sportEmoji()}</div><div class="tt">Sessions<small>${sl.filter(s => s.kind === 'match').length} matches · ${sl.filter(s => s.kind === 'train').length} training</small></div><b>${sl.length}</b></div>
-        <div class="tline"><div class="ti">⏱️</div><div class="tt">Average duration</div><b>${wm.length ? Math.round(avg(wm.map(s => s.min))) + ' min' : '–'}</b></div>
-        <div class="tline"><div class="ti">🔥</div><div class="tt">Average watch calories<small>plan uses ${S.settings.train} training / ${S.settings.match} match</small></div><b>${wk.length ? Math.round(avg(wk.map(s => s.kcal))) + ' kcal' : '–'}</b></div>`; })() : `<div class="empty2">No ${esc(sp.toLowerCase())} sessions in this range.</div>`}</div></div>` : ''}
     <div class="secttl">Running insights</div>${insightCards(allInsights('running'))}`;
   // weekly km + ramp
   if (!runs.length) chEmpty('#rnWeek', 'No runs in this range.');
@@ -118,11 +119,6 @@ function renderRunning() {
     ech('#rnEff', { xAxis: xTime(), yAxis: yVal(v => (+v).toFixed(2)), series: [dotS('Run', e.map(p => [p[0], p[1]]), t.c[2]), lineS('Trend', rolling(e.map(p => [p[0], p[1]]), 5).map(p => [p[0], +p[1].toFixed(3)]), t.good)],
       tooltip: { trigger: 'axis', formatter: ps => { const x = e[ps[0].dataIndex]; return x ? `${tipHead(x[0])}<br>${x[1]} m per beat<br>${fmtPace(paceOf(x[2]))}/${du()} at ${x[2].hr} bpm` : ''; } } }); }
   if ($('#rnVo2')) ech('#rnVo2', { xAxis: xTime(), yAxis: yVal(v => (+v).toFixed(1)), series: [lineS('VO2 max', vo.filter(d => d >= from).map(d => [d, +S.health[d].vo2.toFixed(1)]), t.c[4], { showSymbol: true, areaStyle: { color: t.c[4], opacity: .08 } })], tooltip: { trigger: 'axis' } });
-  if (sp) { const sw = weeks.map(ws => { const s = sl.filter(x => wkOf(x.d) === ws); return [s.filter(x => x.kind === 'train').length, s.filter(x => x.kind === 'match').length]; });
-    if (!sl.length) chEmpty('#rnSport', `No ${esc(sp.toLowerCase())} sessions in this range.`);
-    else ech('#rnSport', { xAxis: xCat(weeks.map(wkLabel)), yAxis: yVal(v => Math.round(v), { scale: false, minInterval: 1 }),
-      legend: { show: true, top: 0, right: 0, textStyle: { color: t.muted, fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
-      series: [barS('Training', sw.map(x => x[0]), t.c[2], { stack: 'sp', itemStyle: { color: t.c[2], borderRadius: 0 } }), barS('Match', sw.map(x => x[1]), t.c[0], { stack: 'sp' })], tooltip: { trigger: 'axis' } }); }
   renderRunDetail();
 }
 
@@ -130,18 +126,19 @@ function renderRunDetail() {
   const box = $('#runDetail'); if (!box) return;
   const r = runSel && S.acts[runSel] ? { id: runSel, ...S.acts[runSel] } : null, t = TH();
   if (!r) { box.innerHTML = '<div class="empty2">Pick a run to see its splits, laps and intervals.</div>'; return; }
-  const iv = r.ivs, laps = r.laps || [], splits = r.splits || [];
+  const tw = healthTwin(r), src = tw && tw.stream ? tw : r, sid = src.id;   // the watch's own trace (via Apple Health) beats Strava's when both exist
+  const iv = src.ivs || r.ivs, laps = r.laps || [], splits = (src.splits && src.splits.length ? src.splits : r.splits) || [];
   const segRows = iv && iv.segs && iv.segs.length ? iv.segs.filter(s => s.s >= 20).map((s, i) => `<tr class="${s.type}"><td>${s.type === 'fast' ? '⚡ Fast' : 'Easy'}</td><td>${Math.floor(s.s / 60)}:${pad(s.s % 60)}</td><td>${fd(s.km, 2)}</td><td>${secPace(s.s, s.km) ? fmtPace(secPace(s.s, s.km)) : '–'}</td><td>${s.hr || '–'}${s.hrMax ? ` <span class="note">/ ${s.hrMax}</span>` : ''}</td></tr>`).join('') : '';
   const lapRows = laps.map((l, i) => `<tr><td>Lap ${i + 1}</td><td>${Math.floor(l.s / 60)}:${pad(l.s % 60)}</td><td>${fd(l.km, 2)}</td><td>${secPace(l.s, l.km) ? fmtPace(secPace(l.s, l.km)) : '–'}</td><td>${l.hr || '–'}</td></tr>`).join('');
-  const canStream = r.src === 'strava' || /^\d+$/.test(r.id);
+  const canStream = !!src.stream || /^\d+$/.test(String(sid)), from = src.stream ? 'your Apple Watch' : 'Strava';
   box.innerHTML = `<h3>${esc(r.name || 'Run')} <span class="note">${dLabel(r.d)} · ${fd(r.km, 2)} ${du()} · ${r.min} min${paceOf(r) ? ` · ${fmtPace(paceOf(r))}/${du()}` : ''}${r.hr ? ` · ${r.hr} bpm` : ''}${r.elev ? ` · ${r.elev} m climb` : ''}</span></h3>
     <div class="ch" id="rdChart"></div>
-    ${iv ? (iv.structured ? `<p class="help" style="margin:6px 0">⚡ <b>${iv.reps} fast reps detected</b> from your pace. Shaded on the chart above.</p>` : '<p class="help" style="margin:6px 0">Steady run: no intervals detected in your pace.</p>') : ''}
+    ${iv ? (iv.structured ? `<p class="help" style="margin:6px 0">⚡ <b>${iv.reps} fast reps detected</b> from your pace (${from}). Shaded on the chart above.</p>` : '<p class="help" style="margin:6px 0">Steady run: no intervals detected in your pace.</p>') : ''}
     ${segRows ? `<details ${iv.structured ? 'open' : ''}><summary class="note" style="cursor:pointer">Detected blocks</summary><table class="ivtbl"><tr><th></th><th>Time</th><th>${du()}</th><th>Pace</th><th>HR</th></tr>${segRows}</table></details>` : ''}
     ${lapRows ? `<details><summary class="note" style="cursor:pointer">Laps from your watch (${laps.length})</summary><table class="ivtbl"><tr><th></th><th>Time</th><th>${du()}</th><th>Pace</th><th>HR</th></tr>${lapRows}</table></details>` : ''}
     <div class="status" id="rdMsg"></div>`;
   const drawSplits = () => {
-    if (!splits.length) return chEmpty('#rdChart', canStream ? (SV.refresh ? 'Loading…' : 'Connect Strava to see splits and intervals.') : 'This run came from Apple Health, which doesn’t include splits. Runs synced from Strava do.');
+    if (!splits.length) return chEmpty('#rdChart', canStream ? (SV.refresh ? 'Loading…' : 'Connect Strava to see splits and intervals.') : 'No pace trace for this run. In Health Auto Export, turn on Include Workout Metrics (Seconds) and Include Route Data in your workouts automation; runs synced after that get splits and intervals.');
     ech('#rdChart', { xAxis: xCat(splits.map((s, i) => `${i + 1}`), { name: imp() ? 'km split' : 'km', nameLocation: 'middle', nameGap: 22, nameTextStyle: { color: t.muted, fontSize: 11 } }), yAxis: yVal(v => fmtPace(+v), { inverse: true }),
       series: [lineS('Pace', splits.map(s => +secPace(s.s, s.km).toFixed(3)), t.accent, { smooth: false, showSymbol: true, symbolSize: 8, areaStyle: { color: t.accent, opacity: .08, origin: 'end' } })],
       tooltip: { trigger: 'axis', formatter: ps => { const s = splits[ps[0].dataIndex]; return `<b>Km ${ps[0].dataIndex + 1}</b>${s.km < .95 ? ` (${s.km} km)` : ''}<br>${fmtPace(ps[0].value)}/${du()}${s.hr ? `<br>${s.hr} bpm` : ''}${s.el ? `<br>${s.el > 0 ? '+' : ''}${s.el} m` : ''}`; } } });
@@ -158,11 +155,116 @@ function renderRunDetail() {
         markArea: areas.length ? { silent: true, itemStyle: { color: t.c[1], opacity: .16 }, data: areas } : undefined })],
       tooltip: { trigger: 'axis', formatter: ps => { const p = ps[0].value, h = hrAt(p[0]); return `${(+p[0]).toFixed(2)} ${du()}<br>${fmtPace(p[1])}/${du()}${h ? `<br>${h} bpm` : ''}`; } } });
   };
-  if (STREAMS[r.id]) return drawStream(STREAMS[r.id]);
+  if (STREAMS[sid]) return drawStream(STREAMS[sid]);
   drawSplits();
-  if (canStream) loadStream(r.id).then(st => {
+  if (canStream) loadStream(sid).then(st => {
     if (runSel !== r.id || !$('#runDetail')) return;
-    if (st && !r.ivs) return renderRunDetail();   // first look: show the detected blocks too
+    if (st && !iv) return renderRunDetail();   // first look: show the detected blocks too
     if (st) drawStream(st);
   }).catch(e => { const m = $('#rdMsg'); if (m) m.innerHTML = `<span class="warn">${esc(e.message)}</span>`; });
+}
+
+// The Apple Health copy of a Strava activity (same watch workout), which may carry a 1 s trace.
+function healthTwin(a) {
+  if (!a || a.src === 'health') return null;
+  for (const [id, h] of Object.entries(S.acts)) if (h.src === 'health' && h.d === a.d && (a.start && h.start ? Math.abs(a.start - h.start) < 15 * 6e4 : Math.abs((h.min || 0) - (a.min || 0)) <= 10)) return { id, ...h };
+  return null;
+}
+
+// ---------- sport (football) ----------
+let sportSel = null;
+function sportActs() {
+  const out = [], seen = new Set();
+  for (const [id, a] of Object.entries(S.acts)) { if (a.dup) continue; const k = stravaKind(a, a.d); if (k === 'train' || k === 'match') { out.push({ id, kind: k, ...a }); seen.add(a.d + k); } }
+  for (const [d, l] of Object.entries(S.logs)) for (const k of ['train', 'match']) if (l[k] && !seen.has(d + k)) out.push({ id: null, d, kind: k, name: k === 'match' ? 'Match (logged)' : 'Training (logged)', min: 0, kcal: null });
+  return out.sort((a, b) => a.d < b.d ? 1 : a.d > b.d ? -1 : (b.start || 0) - (a.start || 0));
+}
+// Max HR: the highest you've actually hit on the watch, or 220 − age if that's higher.
+const maxHR = () => memo('maxhr', () => Math.max(220 - (+S.settings.age || 30), ...Object.values(S.acts).map(a => +a.hrMax || 0).filter(x => x < 230)));
+const ZONES = [['Z1 easy', 0, .6], ['Z2 aerobic', .6, .7], ['Z3 tempo', .7, .8], ['Z4 hard', .8, .9], ['Z5 max', .9, 9]];
+const zoneColors = t => [t.muted, t.c[1], t.good, t.warn, t.bad];
+// Seconds in each heart-rate zone (step = seconds per sample).
+function hrZones(hr, step = 1) {
+  const m = maxHR(), z = [0, 0, 0, 0, 0];
+  for (const h of hr) { if (!(h > 0)) continue; const f = h / m; z[ZONES.findIndex(([, lo, hi]) => f >= lo && f < hi)] += step; }
+  return z;
+}
+function renderSportTab(tabs) {
+  const from = rangeFrom(), t = TH(), today = todayIso(), sp = cap(sportName()), all = sportActs(), ss = all.filter(s => s.d >= from && s.d <= today);
+  const mt = ss.filter(s => s.kind === 'match'), tr = ss.filter(s => s.kind === 'train'), timed = ss.filter(s => s.min > 0), kc = k => ss.filter(s => s.kind === k && s.kcal > 0).map(s => s.kcal);
+  const weeks = weekStartsFrom(from).filter(w => w <= today), withHr = ss.filter(s => s.hr > 0);
+  if (!sportSel || !all.some(s => s.id === sportSel)) sportSel = (ss.find(s => s.id) || {}).id || null;
+  const watchAvg = k => { const v = kc(k); return v.length ? `${Math.round(avg(v))} <small>kcal</small>` : '–'; };
+  const ins = [], wkMin = ws => sum(ss.filter(s => wkOf(s.d) === ws).map(s => s.min || 0));
+  for (const [k, n, plan] of [['train', 'training', +S.settings.train], ['match', 'match', +S.settings.match]]) {
+    const v = kc(k);
+    if (v.length >= 3 && Math.abs(avg(v) - plan) >= 80) ins.push({ area: 'sport', sev: 'info', title: `${cap(n)} calories`, text: `Your watch averages ${Math.round(avg(v))} kcal per ${n} (${v.length} sessions) but your plan assumes ${plan}. Update it in Settings so ${n} days get the right target.`, prio: 2 });
+  }
+  if (weeks.length >= 5) {
+    const last = wkMin(weeks[weeks.length - 1]), pa = avg(weeks.slice(-5, -1).map(wkMin));
+    if (pa > 30 && last > pa * 1.4) ins.push({ area: 'sport', sev: 'warn', title: 'Load spike', text: `${Math.round(last)} min of ${esc(sp.toLowerCase())} this week vs ${Math.round(pa)} a week before. Go easier on legs in the gym.`, prio: 1 });
+  }
+  const hm = withHr.filter(s => s.kind === 'match').map(s => s.hr), ht = withHr.filter(s => s.kind === 'train').map(s => s.hr);
+  if (hm.length && ht.length) ins.push({ area: 'sport', sev: 'info', title: 'Intensity', text: `Average heart rate is ${Math.round(avg(hm))} bpm in matches and ${Math.round(avg(ht))} bpm in training.`, prio: 4 });
+  $('#p-running').innerHTML = phead(cardioName(), `Every ${esc(sp.toLowerCase())} session from your watch, matches and training kept apart.`, rangePicker()) + tabs + `
+    <div class="grid g4">
+      ${kpi('Sessions', ss.length, `${mt.length} match${mt.length === 1 ? '' : 'es'} · ${tr.length} training`)}
+      ${kpi('Time played', timed.length ? `${(sum(timed.map(s => s.min)) / 60).toFixed(1)} <small>h</small>` : '–', timed.length ? `avg ${Math.round(avg(timed.map(s => s.min)))} min a session` : 'needs watch workouts')}
+      ${kpi('Match calories', watchAvg('match'), `watch average · plan uses ${S.settings.match}`)}
+      ${kpi('Training calories', watchAvg('train'), `watch average · plan uses ${S.settings.train}`)}
+    </div>
+    <div class="grid g2" style="margin-top:14px">
+      ${cbox('spWeek', 'Minutes per week', 'matches and training')}
+      ${cbox('spKcal', 'Calories per session', 'from your watch · dashed = what your plan assumes')}
+    </div>
+    <div class="secttl">Sessions</div>
+    <div class="grid g2">
+      <div class="box" style="padding:6px 8px">${ss.length ? `<div style="max-height:520px;overflow:auto"><table class="runlist"><tr><th>Date</th><th>Session</th><th>Min</th><th>kcal</th><th>HR</th></tr>
+        ${ss.map(s => `<tr class="r ${s.id === sportSel ? 'on' : ''}" data-sport="${s.id || ''}"><td>${fmtShort(s.d)}</td><td><span class="pill2 ${s.kind === 'match' ? 'warn' : ''}">${s.kind === 'match' ? 'Match' : 'Training'}</span> ${esc(s.name || '')}</td><td>${s.min || '–'}</td><td>${s.kcal || '–'}</td><td>${s.hr || '–'}${s.hrMax ? ` <span class="note">/ ${s.hrMax}</span>` : ''}</td></tr>`).join('')}</table></div>`
+        : `<div class="empty2">No ${esc(sp.toLowerCase())} sessions in this range. Record them on your watch (Apple Health) or Strava.</div>`}</div>
+      <div class="box" id="sportDetail"></div>
+    </div>
+    <div class="secttl">${esc(sp)} insights</div>${insightCards(ins)}`;
+  if (!ss.length) { chEmpty('#spWeek', 'No sessions in this range.'); chEmpty('#spKcal', 'No sessions in this range.'); }
+  else {
+    const per = k => weeks.map(ws => sum(ss.filter(s => s.kind === k && wkOf(s.d) === ws).map(s => s.min || 0)));
+    ech('#spWeek', { xAxis: xCat(weeks.map(wkLabel)), yAxis: yVal(v => Math.round(v), { scale: false }),
+      legend: { show: true, top: 0, right: 0, textStyle: { color: t.muted, fontSize: 11 }, itemWidth: 10, itemHeight: 10 },
+      series: [barS('Training', per('train'), t.c[2], { stack: 'm', itemStyle: { color: t.c[2], borderRadius: 0 } }), barS('Match', per('match'), t.warn, { stack: 'm' })],
+      tooltip: { trigger: 'axis', valueFormatter: v => v + ' min' } });
+    const kk = [...ss].reverse().filter(s => s.kcal > 0);
+    if (!kk.length) chEmpty('#spKcal', 'No watch calories yet.');
+    else ech('#spKcal', { xAxis: xTime(), yAxis: yVal(v => Math.round(v)),
+      series: [dotS('Training', kk.filter(s => s.kind === 'train').map(s => [s.d, s.kcal]), t.c[2], { symbolSize: 9, markLine: markY(+S.settings.train, 'plan: training', t.c[2]) }),
+        dotS('Match', kk.filter(s => s.kind === 'match').map(s => [s.d, s.kcal]), t.warn, { symbolSize: 11, markLine: markY(+S.settings.match, 'plan: match', t.warn) })],
+      legend: { show: true, top: 0, right: 0, textStyle: { color: t.muted, fontSize: 11 } },
+      tooltip: { trigger: 'item', formatter: p => `${tipHead(p.value[0])}<br>${p.seriesName}: <b>${p.value[1]} kcal</b>` } });
+  }
+  renderSportDetail();
+}
+function renderSportDetail() {
+  const box = $('#sportDetail'); if (!box) return;
+  const a = sportSel && S.acts[sportSel] ? { id: sportSel, ...S.acts[sportSel] } : null, t = TH();
+  if (!a) { box.innerHTML = '<div class="empty2">Pick a session to see its heart rate and zones.</div>'; return; }
+  const tw = healthTwin(a), src = tw && tw.stream ? tw : a, sid = src.id, kind = stravaKind(a, a.d), zc = zoneColors(t);
+  box.innerHTML = `<h3>${esc(a.name || cap(sportName()))} <span class="note">${dLabel(a.d)} · ${kind === 'match' ? 'match' : 'training'} · ${a.min} min${a.kcal ? ` · ${a.kcal} kcal` : ''}${a.km ? ` · ${fd(a.km, 1)} ${du()}` : ''}</span></h3>
+    <div class="ch sm" id="sdHr"></div><div class="ch xs" id="sdZones" style="height:70px"></div><div class="status" id="sdMsg"></div>`;
+  const draw = st => {
+    if (!st || !st.heartrate) { chEmpty('#sdZones', ''); return chEmpty('#sdHr', 'No heart-rate trace for this session. It comes from Apple Health workouts: turn on Include Workout Metrics in your Health Auto Export workouts automation.'); }
+    const m = maxHR(), pts = st.time.map((x, i) => [+(x / 60).toFixed(2), st.heartrate[i]]).filter(p => p[1] > 0);
+    const step = st.time.length > 1 ? (st.time[st.time.length - 1] - st.time[0]) / (st.time.length - 1) : 1;
+    ech('#sdHr', { xAxis: { type: 'value', min: 0, max: 'dataMax', axisLabel: { color: t.muted, fontSize: 11, formatter: v => Math.round(v) + ' min' }, splitLine: { show: false }, axisLine: { lineStyle: { color: t.line } } },
+      yAxis: yVal(v => Math.round(v)), visualMap: { show: false, dimension: 1, pieces: ZONES.map(([, lo, hi], i) => ({ gte: lo * m, lt: hi * m, color: zc[i] })) },
+      series: [lineS('Heart rate', pts, t.bad, { smooth: 0.2, lineStyle: { width: 1.6 } })],
+      tooltip: { trigger: 'axis', formatter: ps => `${Math.round(ps[0].value[0])} min<br><b>${ps[0].value[1]} bpm</b> (${Math.round(ps[0].value[1] / m * 100)}% of max ${m})` } });
+    const z = hrZones(st.heartrate, step), tot = sum(z) || 1;
+    ech('#sdZones', { grid: { left: 4, right: 4, top: 4, bottom: 4, containLabel: false }, xAxis: { type: 'value', show: false, max: tot }, yAxis: { type: 'category', show: false, data: [''] },
+      tooltip: { trigger: 'item', formatter: p => `${p.seriesName}: <b>${Math.round(p.value / 60)} min</b> (${Math.round(p.value / tot * 100)}%)` },
+      series: ZONES.map(([n], i) => ({ name: n, type: 'bar', stack: 'z', data: [z[i]], barWidth: 26, itemStyle: { color: zc[i] },
+        label: { show: z[i] / tot > .09, formatter: () => `${n.split(' ')[0]} ${Math.round(z[i] / 60)} min`, color: '#fff', fontSize: 11 } })) });
+  };
+  if (STREAMS[sid]) return draw(STREAMS[sid]);
+  chEmpty('#sdHr', 'Loading…');
+  loadStream(sid).then(st => { if (sportSel === a.id && $('#sportDetail')) draw(st); })
+    .catch(e => { const m = $('#sdMsg'); if (m) m.innerHTML = `<span class="warn">${esc(e.message)}</span>`; draw(null); });
 }

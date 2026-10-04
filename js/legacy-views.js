@@ -90,7 +90,7 @@ const FIELDS = [
   ['train',() => `${cap(sportName() || 'Sport')} training (kcal)`,10],['match',() => `${cap(sportName() || 'Sport')} match (kcal)`,10],
   ['matchDay','Match day (Strava sessions on this day count as a match)',DAY_OPTS],
   ['proteinPerKg',() => `Protein (g per ${wu()} bodyweight)`,'perW'],['fatPerKg',() => `Fat (g per ${wu()} bodyweight)`,'perW'],
-  ['repLow','Rep range: bottom',1],['repHigh','Rep range: top (hit this on every set, then add weight)',1]
+  ['liftsFrom','Count lift history from (blank = all of it)','date'],['repLow','Rep range: bottom',1],['repHigh','Rep range: top (hit this on every set, then add weight)',1]
 ];
 const SPORT_FIELDS = ['train', 'match', 'matchDay'];
 function fieldVal(k, t) {
